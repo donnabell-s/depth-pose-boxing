@@ -37,22 +37,12 @@ from src.pose_detector import PoseExtractor
 from src.data_validation import load_ground_truth, print_report
 from src.video import video_fps, video_frame_size
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Camera profiles
-# Fill in your calibrated values from calibrate.py.
-# Add a new entry for each camera you use.
-# ──────────────────────────────────────────────────────────────────────────────
 
 CAMERA_PROFILES: dict[str, CameraIntrinsics] = {
-    # ── Replace 0.0 values after running calibrate.py ──────────────────
-    "default": CameraIntrinsics(fx=0.0, fy=0.0, cx=0.0, cy=0.0),
-
-    # ── Uncomment and fill in as you calibrate each camera ─────────────
-    # "macbook":  CameraIntrinsics(fx=0.0, fy=0.0, cx=0.0, cy=0.0),
-    # "iphone":   CameraIntrinsics(fx=0.0, fy=0.0, cx=0.0, cy=0.0),
-    # "android":  CameraIntrinsics(fx=0.0, fy=0.0, cx=0.0, cy=0.0),
+    "iphone13": CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
+    "oppo": CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
 }
-
+  
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging

@@ -100,6 +100,7 @@ Before running the pipeline you need camera intrinsics (`fx, fy, cx, cy`).
 **Option A — Film a checkerboard and calibrate:**
 ```bash
 python calibrate.py --video data/raw/checkerboard.mp4
+python calibrate.py --video data/raw/checkerboard.mp4 --cols 10 --rows 7 --square-size 50 --skip-frames 10
 ```
 Copy the printed values into `CAMERA_PROFILES` in `main.py`.
 

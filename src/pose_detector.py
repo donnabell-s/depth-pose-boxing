@@ -1,19 +1,20 @@
 """
-pose_detector.py — 2D keypoint extraction using RTMPose via MMPose.
+pose_detector.py — 2D keypoint extraction using YOLOv8-Pose via Ultralytics.
 
-Input  : video file (MP4 / AVI / MOV)
+Input  : video file (MP4 / MOV / AVI)
 Output : (T, 9, 2) keypoints in pixel space  — active joints only
          (T, 9)    confidence scores per joint
 
-RTMPose internally outputs all 17 COCO joints. This module slices
-ACTIVE_JOINTS at the output boundary so every downstream file works
-exclusively with local indices 0–8. See utils.py for the mapping.
+YOLOv8-Pose outputs COCO-17 keypoints natively so the ACTIVE_JOINTS
+slice works without any remapping. See constants.py for the joint mapping.
 
 Model options
 -------------
-  "body-s" : RTMPose-Small  — fastest, use on Colab free tier
-  "body-m" : RTMPose-Medium — good balance
-  "body-l" : RTMPose-Large  — best accuracy, recommended for final data
+  "nano"   : YOLOv8n-pose — fastest, lowest accuracy
+  "small"  : YOLOv8s-pose — good balance for CPU
+  "medium" : YOLOv8m-pose — recommended for GPU
+  "large"  : YOLOv8l-pose — best accuracy (default)
+  "xlarge" : YOLOv8x-pose — highest accuracy, most VRAM
 """
 
 from __future__ import annotations
@@ -23,50 +24,29 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.utils import (
+from src.constants import (
     ACTIVE_JOINTS,
-    ACTIVE_JOINT_NAMES,
     NUM_ACTIVE_JOINTS,
-    load_video_frames,
 )
+from src.video import load_video_frames
 
 logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Model registry
-# Checkpoints download automatically on first run via MMPose.
+# Models download automatically from Ultralytics on first run.
 # ──────────────────────────────────────────────────────────────────────────────
 
-_MODELS: dict[str, dict] = {
-    "body-s": {
-        "config": "rtmpose-s_8xb256-420e_coco-256x192.py",
-        "checkpoint": (
-            "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/"
-            "rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.pth"
-        ),
-    },
-    "body-m": {
-        "config": "rtmpose-m_8xb256-420e_coco-256x192.py",
-        "checkpoint": (
-            "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/"
-            "rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.pth"
-        ),
-    },
-    "body-l": {
-        "config": "rtmpose-l_8xb256-420e_coco-256x192.py",
-        "checkpoint": (
-            "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/"
-            "rtmpose-l_simcc-body7_pt-body7_420e-256x192-4dba18fc_20230504.pth"
-        ),
-    },
+_MODELS: dict[str, str] = {
+    "nano":   "yolov8n-pose.pt",
+    "small":  "yolov8s-pose.pt",
+    "medium": "yolov8m-pose.pt",
+    "large":  "yolov8l-pose.pt",
+    "xlarge": "yolov8x-pose.pt",
 }
 
-_DET_CONFIG = "rtmdet-nano_320-8xb32_coco-person.py"
-_DET_CHECKPOINT = (
-    "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/"
-    "rtmdet-nano_8xb32-100e_coco-obj365-person-05d8511e.pth"
-)
+DEFAULT_MODEL = "large"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -107,11 +87,12 @@ class Pose2DResult:
 
 class PoseExtractor:
     """
-    Wraps MMPose RTMPose inference. Model is loaded once on first call.
+    Wraps YOLOv8-Pose inference via Ultralytics.
+    Model is loaded once on first call (lazy loading).
 
     Parameters
     ----------
-    model    : "body-s" | "body-m" | "body-l"
+    model    : "nano" | "small" | "medium" | "large" | "xlarge"
     device   : "cuda:0" | "cpu"
     det_thr  : minimum person detection confidence
     pose_thr : joints below this confidence are zeroed out
@@ -119,48 +100,44 @@ class PoseExtractor:
 
     def __init__(
         self,
-        model:    str   = "body-l",
+        model:    str   = DEFAULT_MODEL,
         device:   str   = "cuda:0",
         det_thr:  float = 0.5,
         pose_thr: float = 0.3,
     ) -> None:
         if model not in _MODELS:
-            raise ValueError(f"Unknown model '{model}'. Choose from: {list(_MODELS)}")
+            raise ValueError(
+                f"Unknown model '{model}'. Choose from: {list(_MODELS)}"
+            )
         self.model    = model
         self.device   = device
         self.det_thr  = det_thr
         self.pose_thr = pose_thr
-        self._inferencer = None
+        self._yolo    = None
 
     # ------------------------------------------------------------------
     # Lazy load
     # ------------------------------------------------------------------
 
     def _load(self) -> None:
-        if self._inferencer is not None:
+        if self._yolo is not None:
             return
 
         try:
-            from mmpose.apis import MMPoseInferencer  # type: ignore
+            from ultralytics import YOLO  # type: ignore
         except ImportError as exc:
             raise ImportError(
-                "MMPose is not installed.\n"
-                "Run:  pip install openmim && "
-                "mim install mmengine 'mmcv>=2.0.0' mmdet mmpose"
+                "Ultralytics is not installed.\n"
+                "Run:  pip install ultralytics"
             ) from exc
 
-        cfg = _MODELS[self.model]
-        logger.info("Loading RTMPose — model: %s | device: %s", self.model, self.device)
-
-        self._inferencer = MMPoseInferencer(
-            pose2d=cfg["config"],
-            pose2d_weights=cfg["checkpoint"],
-            det_model=_DET_CONFIG,
-            det_weights=_DET_CHECKPOINT,
-            det_cat_ids=[0],    # 0 = person in COCO
-            device=self.device,
+        model_file = _MODELS[self.model]
+        logger.info(
+            "Loading YOLOv8-Pose — model: %s | device: %s",
+            model_file, self.device,
         )
-        logger.info("RTMPose ready.")
+        self._yolo = YOLO(model_file)
+        logger.info("YOLOv8-Pose ready.")
 
     # ------------------------------------------------------------------
     # Single frame
@@ -172,38 +149,49 @@ class PoseExtractor:
         frame_idx: int = 0,
     ) -> Pose2DResult | None:
         """
-        Run RTMPose on one BGR frame.
+        Run YOLOv8-Pose on one BGR frame.
 
-        Internally produces (17, 2) keypoints then slices ACTIVE_JOINTS
+        Internally produces (17, 2) COCO keypoints then slices ACTIVE_JOINTS
         before returning, so the caller always sees (9, 2).
 
         Returns None if no person is detected above det_thr.
         """
         self._load()
 
-        import cv2
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        h, w      = frame_bgr.shape[:2]
+        h, w = frame_bgr.shape[:2]
 
-        result_gen  = self._inferencer(frame_rgb, return_datasamples=False, progress_bar=False)
-        predictions = next(result_gen).get("predictions", [[]])[0]
+        results = self._yolo(
+            frame_bgr,
+            device=self.device,
+            conf=self.det_thr,
+            verbose=False,
+        )
 
-        if not predictions:
+        if not results or results[0].keypoints is None:
             logger.debug("Frame %d: no person detected.", frame_idx)
             return None
 
-        # Single boxer — keep only the highest-confidence detection
-        best = max(predictions, key=lambda p: p.get("bbox_score", 0.0))
+        result = results[0]
 
-        if best.get("bbox_score", 0.0) < self.det_thr:
+        if len(result.boxes) == 0:
+            logger.debug("Frame %d: no person detected.", frame_idx)
+            return None
+
+        # Single boxer — keep highest confidence detection
+        confs = result.boxes.conf.cpu().numpy()
+        best  = int(np.argmax(confs))
+
+        if confs[best] < self.det_thr:
             logger.debug("Frame %d: detection below threshold.", frame_idx)
             return None
 
-        # Full COCO-17 arrays
-        kps_full    = np.array(best["keypoints"],       dtype=np.float32)  # (17, 2)
-        scores_full = np.array(best["keypoint_scores"], dtype=np.float32)  # (17,)
+        # Extract keypoints — shape (17, 3) where [:, 2] is confidence
+        kps_all = result.keypoints.data[best].cpu().numpy()  # (17, 3)
 
-        # ── Slice to active joints only ───────────────────────────────
+        kps_full    = kps_all[:, :2].astype(np.float32)  # (17, 2)
+        scores_full = kps_all[:, 2].astype(np.float32)   # (17,)
+
+        # Slice to active joints only
         kps    = kps_full[ACTIVE_JOINTS]     # (9, 2)
         scores = scores_full[ACTIVE_JOINTS]  # (9,)
 
@@ -248,15 +236,23 @@ class PoseExtractor:
         results   = []
         processed = 0
 
-        for frame_idx, frame_bgr in load_video_frames(video_path, skip_frames, max_frames):
+        for frame_idx, frame_bgr in load_video_frames(
+            video_path, skip_frames, max_frames
+        ):
             result = self.process_frame(frame_bgr, frame_idx)
             processed += 1
             if result is not None:
                 results.append(result)
 
+            if processed % 50 == 0:
+                logger.info(
+                    "Processed %d frames → %d detections so far.",
+                    processed, len(results),
+                )
+
         detection_rate = 100 * len(results) / max(processed, 1)
         logger.info(
-            "Processed %d frames → %d detections (%.1f%%)",
+            "Processed %d frames -> %d detections (%.1f%%)",
             processed, len(results), detection_rate,
         )
 
@@ -273,7 +269,9 @@ class PoseExtractor:
 # Helpers for downstream stages
 # ──────────────────────────────────────────────────────────────────────────────
 
-def stack_keypoints(results: list[Pose2DResult]) -> tuple[np.ndarray, np.ndarray]:
+def stack_keypoints(
+    results: list[Pose2DResult],
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Stack a list of Pose2DResult into dense arrays.
 
@@ -282,8 +280,8 @@ def stack_keypoints(results: list[Pose2DResult]) -> tuple[np.ndarray, np.ndarray
     keypoints : (T, 9, 2) float32 — local joint indices
     scores    : (T, 9)    float32
     """
-    keypoints = np.stack([r.keypoints for r in results], axis=0)  # (T, 9, 2)
-    scores    = np.stack([r.scores    for r in results], axis=0)  # (T, 9)
+    keypoints = np.stack([r.keypoints for r in results], axis=0)
+    scores    = np.stack([r.scores    for r in results], axis=0)
     return keypoints, scores
 
 

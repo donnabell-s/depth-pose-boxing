@@ -6,13 +6,13 @@ Wires the full pipeline end-to-end:
 
 Usage
 -----
-    python main.py --video data/raw/boxer_01.mp4
+    python main.py --video data/raw/boxer_01.mp4 --camera iphone13
 
-With a specific camera profile:
-    python main.py --video data/raw/boxer_01.mp4 --camera macbook
+With debug video output:
+    python main.py --video data/raw/boxer_01.mp4 --camera iphone13 --debug-video
 
 Validate against ground truth after processing:
-    python main.py --video data/raw/boxer_01.mp4 --validate --gt data/athlete_pose_3d/boxer_01.npy
+    python main.py --video data/raw/boxer_01.mp4 --camera iphone13 --validate --gt data/athlete_pose_3d/boxer_01.npy
 
 Camera profiles
 ---------------
@@ -33,9 +33,15 @@ import numpy as np
 from src.backproject import CameraIntrinsics, backproject
 from src.depth_estimation import DepthEstimator
 from src.normalize import NormConfig, normalize
-from src.pose_detector import PoseExtractor
+from src.pose_detector import PoseExtractor, stack_keypoints, frame_indices
 from src.data_validation import load_ground_truth, print_report
 from src.video import video_fps, video_frame_size
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Camera profiles
+# Fill in your calibrated values from calibrate.py.
+# Add a new entry for each camera you use.
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 CAMERA_PROFILES: dict[str, CameraIntrinsics] = {
@@ -43,6 +49,7 @@ CAMERA_PROFILES: dict[str, CameraIntrinsics] = {
     "oppo": CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
 }
   
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging
@@ -89,11 +96,14 @@ def run(args: argparse.Namespace) -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{video_path.stem}.npy"
+    stem        = video_path.stem
+    output_path = output_dir / f"{stem}.npy"
+    kp2d_path   = output_dir / f"{stem}_2d.npy"
+    debug_path  = output_dir / f"{stem}_debug.mp4"
 
     # ── Read video metadata ───────────────────────────────────────────────────
-    fps    = video_fps(video_path)
-    hw     = video_frame_size(video_path)
+    fps = video_fps(video_path)
+    hw  = video_frame_size(video_path)
 
     logger.info("=" * 55)
     logger.info("depth-pose-boxing — Phase 1 Pipeline")
@@ -109,8 +119,8 @@ def run(args: argparse.Namespace) -> None:
     t_start = time.perf_counter()
 
     # ── Step 1 — 2D pose extraction ───────────────────────────────────────────
-    logger.info("[1/4] Extracting 2D keypoints (RTMPose-%s)...", args.pose_model)
-    extractor     = PoseExtractor(
+    logger.info("[1/4] Extracting 2D keypoints (YOLOv8-%s)...", args.pose_model)
+    extractor = PoseExtractor(
         model=args.pose_model,
         device=args.device,
         det_thr=args.det_thr,
@@ -121,6 +131,12 @@ def run(args: argparse.Namespace) -> None:
         skip_frames=args.skip_frames,
         max_frames=args.max_frames,
     )
+
+    # Save 2D keypoints for debug video rendering
+    kps2d, scores2d = stack_keypoints(pose2d_results)   # (T, 9, 2), (T, 9)
+    fidxs           = frame_indices(pose2d_results)      # (T,)
+    np.save(kp2d_path, kps2d)
+    logger.info("2D keypoints saved → %s", kp2d_path)
 
     # ── Step 2 — Depth estimation + Z sampling ────────────────────────────────
     logger.info("[2/4] Estimating depth (Depth Anything V2 — %s)...", args.depth_model)
@@ -138,7 +154,7 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Step 4 — Normalisation ────────────────────────────────────────────────
     logger.info("[4/4] Normalising skeleton sequence...")
-    cfg      = NormConfig(
+    cfg = NormConfig(
         fps=fps,
         score_thr=args.pose_thr,
         min_cutoff=args.min_cutoff,
@@ -147,7 +163,7 @@ def run(args: argparse.Namespace) -> None:
     )
     sequence = normalize(points_3d, scores, cfg)  # (T, 9, 3)
 
-    # ── Save output ───────────────────────────────────────────────────────────
+    # ── Save 3D output ────────────────────────────────────────────────────────
     np.save(output_path, sequence)
     t_total = time.perf_counter() - t_start
 
@@ -156,6 +172,21 @@ def run(args: argparse.Namespace) -> None:
     logger.info("Output shape : %s", sequence.shape)
     logger.info("Saved to     : %s", output_path)
     logger.info("=" * 55)
+
+    # ── Optional debug video ──────────────────────────────────────────────────
+    if args.debug_video:
+        logger.info("Rendering debug video...")
+        from src.visualize import render_skeleton_video
+        render_skeleton_video(
+            video_path=video_path,
+            keypoints_2d=kps2d,       # (T, 9, 2)
+            scores=scores2d,          # (T, 9)
+            frame_indices=fidxs,      # (T,)
+            output_path=debug_path,
+            fps=fps,
+            score_thr=args.pose_thr,
+        )
+        logger.info("Debug video saved → %s", debug_path)
 
     # ── Optional validation ───────────────────────────────────────────────────
     if args.validate:
@@ -187,16 +218,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Output
     ap.add_argument("--output-dir", default="data/processed",
-                    help="Directory for .npy output files")
+                    help="Directory for output files")
 
     # Device
     ap.add_argument("--device", default="cuda:0",
                     help="PyTorch device — 'cuda:0' or 'cpu'")
 
-    # Step 1 — RTMPose
-    ap.add_argument("--pose-model", default="body-l",
-                    choices=["body-s", "body-m", "body-l"],
-                    help="RTMPose model size")
+    # Step 1 — YOLOv8-Pose
+    ap.add_argument("--pose-model", default="large",
+                    choices=["nano", "small", "medium", "large", "xlarge"],
+                    help="YOLOv8-Pose model size")
     ap.add_argument("--det-thr", type=float, default=0.5,
                     help="Person detection confidence threshold")
     ap.add_argument("--pose-thr", type=float, default=0.3,
@@ -218,6 +249,10 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="One Euro Filter min cutoff — lower = smoother at rest")
     ap.add_argument("--beta", type=float, default=0.1,
                     help="One Euro Filter beta — higher = less lag on fast motion")
+
+    # Debug video
+    ap.add_argument("--debug-video", action="store_true",
+                    help="Render annotated skeleton video to data/processed/")
 
     # Validation
     ap.add_argument("--validate", action="store_true",

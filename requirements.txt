@@ -1,0 +1,31 @@
+# depth-pose-boxing — GPU requirements
+# Tested on: NVIDIA RTX 4060, CUDA 13.0, Python 3.10+
+#
+# Install:
+#   pip install -r requirements.txt
+#
+# After installing, set up MMPose via OpenMIM:
+#   pip install openmim
+#   mim install mmengine "mmcv>=2.0.0" mmdet mmpose
+#
+# Note: torch, torchvision, torchaudio below use CUDA 13.0 (PyTorch 2.11+
+# default). If you need a different CUDA version, replace these three lines
+# with the correct --index-url from https://pytorch.org/get-started/locally/
+
+# ── PyTorch (CUDA 13.0 — default as of PyTorch 2.11) ─────────────────
+torch
+torchvision
+torchaudio
+
+# ── Core ──────────────────────────────────────────────────────────────
+numpy>=1.24
+opencv-python>=4.8
+scipy>=1.11
+
+# ── Depth Anything V2 ─────────────────────────────────────────────────
+transformers>=4.40
+Pillow>=10.0
+
+# ── Visualisation ─────────────────────────────────────────────────────
+matplotlib>=3.8
+jupyter                 # for notebooks/visualize.ipynb

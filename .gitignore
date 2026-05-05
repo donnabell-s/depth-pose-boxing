@@ -1,0 +1,84 @@
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+.venv
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project-specific
+data/raw/
+data/processed/
+data/athlete_pose_3d/
+*.pth
+*.pt
+*.model
+.tmp/
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local requirements
+requirements.local.txt
+
+# Model checkpoints — downloaded automatically, no need to commit
+models/

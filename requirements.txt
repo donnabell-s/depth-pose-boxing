@@ -1,5 +1,6 @@
 # depth-pose-boxing — GPU requirements
-# Tested on: NVIDIA RTX 4060, CUDA 13.0, Python 3.10+
+# Tested on: NVIDIA RTX 4060, CUDA 13.0, Python 3.10+ / 3.12+
+# Recommended environment: WSL2 (Ubuntu) or native Linux
 #
 # Install:
 #   pip install -r requirements.txt
@@ -7,6 +8,10 @@
 # After installing, set up MMPose via OpenMIM:
 #   pip install openmim
 #   mim install mmengine "mmcv>=2.0.0" mmdet mmpose
+#
+# Then fix numpy/xtcocotools compatibility:
+#   pip install "numpy<2.0"
+#   pip install --no-binary xtcocotools xtcocotools
 #
 # Note: torch, torchvision, torchaudio below use CUDA 13.0 (PyTorch 2.11+
 # default). If you need a different CUDA version, replace these three lines
@@ -18,7 +23,7 @@ torchvision
 torchaudio
 
 # ── Core ──────────────────────────────────────────────────────────────
-numpy>=1.24
+numpy>=1.24,<2.0        # pinned — xtcocotools is incompatible with numpy 2.x
 opencv-python>=4.8
 scipy>=1.11
 

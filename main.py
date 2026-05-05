@@ -33,7 +33,7 @@ import numpy as np
 from src.backproject import CameraIntrinsics, backproject
 from src.depth_estimation import DepthEstimator
 from src.normalize import NormConfig, normalize
-from src.pose_detector import PoseExtractor, frame_indices
+from src.pose_detector import PoseExtractor
 from src.data_validation import load_ground_truth, print_report
 from src.video import video_fps, video_frame_size
 
@@ -131,7 +131,6 @@ def run(args: argparse.Namespace) -> None:
         skip_frames=args.skip_frames,
         max_frames=args.max_frames,
     )
-    idxs = frame_indices(pose2d_results)
 
     # ── Step 2 — Depth estimation + Z sampling ────────────────────────────────
     logger.info("[2/4] Estimating depth (Depth Anything V2 — %s)...", args.depth_model)

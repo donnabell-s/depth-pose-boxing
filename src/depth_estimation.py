@@ -35,7 +35,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.pose_detector import Pose2DResult, stack_keypoints
+from src.pose_detector import Pose2DResult
 from src.utils import NUM_ACTIVE_JOINTS, load_video_frames
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class DepthEstimator:
     # Depth map for one frame
     # ------------------------------------------------------------------
 
-    def estimate_depth(self, frame_bgr: np.ndarray) -> np.ndarray:
+    def estimate_depth(self, frame_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
         Run depth estimation on one BGR frame.
 
@@ -159,7 +159,7 @@ class DepthEstimator:
         depth_map: np.ndarray,   # (H, W)
         keypoints: np.ndarray,   # (9, 2)  pixel (x, y)
         scores:    np.ndarray,   # (9,)
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Sample the depth map at each joint's pixel location.
 
@@ -199,7 +199,7 @@ class DepthEstimator:
         self,
         pose2d_results: list[Pose2DResult],
         video_path:     str | Path,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Attach Z values to all 2D pose results, producing a (T, 9, 3) array.
 

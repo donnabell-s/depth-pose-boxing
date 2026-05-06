@@ -305,3 +305,116 @@ def render_skeleton_video(
         output_path, written, written / fps,
     )
     return output_path
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Depth map export
+# ──────────────────────────────────────────────────────────────────────────────
+
+def save_depthmaps(
+    video_path:    str | Path,
+    keypoints_2d:  np.ndarray,   # (T, 9, 2)
+    scores:        np.ndarray,   # (T, 9)
+    frame_indices: np.ndarray,   # (T,) original frame numbers
+    depth_maps:    list,         # list of (H, W) float32 depth maps from depth_estimation
+    output_dir:    str | Path,
+    every_n:       int   = 10,
+    score_thr:     float = 0.3,
+) -> list[Path]:
+    """
+    Save every Nth depth map frame as a PNG with:
+    - Colour-mapped depth (INFERNO colormap — dark=close, bright=far)
+    - Joint positions overlaid as coloured dots
+    - Depth value printed at each joint location
+    - Frame number and joint confidence scores
+
+    Parameters
+    ----------
+    video_path    : original source video (for frame reading)
+    keypoints_2d  : (T, 9, 2) pixel coordinates from pose_detector
+    scores        : (T, 9) per-joint confidence
+    frame_indices : (T,) original video frame numbers
+    depth_maps    : list of T depth maps (H, W) float32 in [0, 1]
+    output_dir    : directory to save PNGs — will create subdir automatically
+    every_n       : save every Nth frame (default 10)
+    score_thr     : joints below this threshold shown as missing
+
+    Returns
+    -------
+    List of saved PNG paths.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    T       = len(frame_indices)
+    saved   = []
+
+    for t in range(0, T, every_n):
+        frame_idx  = int(frame_indices[t])
+        depth_map  = depth_maps[t]          # (H, W) float32
+        kps        = keypoints_2d[t]        # (9, 2)
+        sc         = scores[t]              # (9,)
+
+        H, W = depth_map.shape
+
+        # ── Apply INFERNO colormap ────────────────────────────────────────
+        depth_uint8 = (depth_map * 255).astype(np.uint8)
+        depth_colour = cv2.applyColorMap(depth_uint8, cv2.COLORMAP_INFERNO)  # (H, W, 3)
+
+        # ── Overlay joints ────────────────────────────────────────────────
+        valid = sc >= score_thr
+        for j in range(9):
+            if not valid[j]:
+                continue
+            cx = int(np.clip(round(kps[j, 0]), 0, W - 1))
+            cy = int(np.clip(round(kps[j, 1]), 0, H - 1))
+            colour = _JOINT_COLOURS.get(j, (200, 200, 200))
+
+            # Joint dot
+            cv2.circle(depth_colour, (cx, cy), 8, colour, -1, cv2.LINE_AA)
+            cv2.circle(depth_colour, (cx, cy), 8, (255, 255, 255), 1, cv2.LINE_AA)
+
+            # Depth value at joint
+            z_val = float(depth_map[cy, cx])
+            label = f"{ACTIVE_JOINT_NAMES.get(j, str(j)).replace('_', ' ')}: {z_val:.3f}"
+            cv2.putText(
+                depth_colour, label,
+                (cx + 10, cy - 4),
+                _FONT, 0.38, colour, 1, cv2.LINE_AA,
+            )
+
+        # ── Frame info ────────────────────────────────────────────────────
+        cv2.putText(
+            depth_colour,
+            f"Frame {frame_idx:04d}  |  Depth map  |  INFERNO (dark=close, bright=far)",
+            (10, 24), _FONT, 0.55, (255, 255, 255), 1, cv2.LINE_AA,
+        )
+
+        # ── Confidence bar ────────────────────────────────────────────────
+        bar_y = H - 20
+        bar_w = W // 9
+        for j in range(9):
+            x0    = j * bar_w
+            conf  = float(sc[j])
+            color = _JOINT_COLOURS.get(j, (200, 200, 200))
+            cv2.rectangle(depth_colour,
+                          (x0, bar_y - 12), (x0 + bar_w - 2, bar_y + 4),
+                          (40, 40, 40), -1)
+            fill_w = int((bar_w - 4) * conf)
+            cv2.rectangle(depth_colour,
+                          (x0 + 2, bar_y - 10),
+                          (x0 + 2 + fill_w, bar_y + 2),
+                          color, -1)
+            name = ACTIVE_JOINT_NAMES.get(j, str(j))[:4]
+            cv2.putText(depth_colour, name, (x0 + 2, bar_y - 14),
+                        _FONT, 0.28, (200, 200, 200), 1, cv2.LINE_AA)
+
+        # ── Save PNG ──────────────────────────────────────────────────────
+        out_path = output_dir / f"frame_{frame_idx:04d}_depthmap.png"
+        cv2.imwrite(str(out_path), depth_colour)
+        saved.append(out_path)
+
+    logger.info(
+        "Saved %d depth map frames to %s", len(saved), output_dir
+    )
+    return saved

@@ -111,9 +111,8 @@ Search `"<device name> camera intrinsics fx fy cx cy"`. Make sure the values mat
 **Add a profile in `main.py`:**
 ```python
 CAMERA_PROFILES = {
-    "default":  CameraIntrinsics(fx=0.0,    fy=0.0,    cx=0.0,  cy=0.0),
-    "macbook":  CameraIntrinsics(fx=849.3,  fy=851.1,  cx=638.7, cy=359.2),
-    "iphone14": CameraIntrinsics(fx=1450.0, fy=1450.0, cx=540.0, cy=960.0),
+    "iphone13": CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
+    "oppo": CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
 }
 ```
 
@@ -122,7 +121,8 @@ CAMERA_PROFILES = {
 ## Running the pipeline
 
 ```bash
-python main.py --video data/raw/boxer_01.mp4 --camera macbook
+python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video
+python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video --depthmap-every 10
 ```
 
 Output saved to `data/processed/boxer_01.npy`.

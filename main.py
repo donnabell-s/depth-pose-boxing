@@ -43,12 +43,10 @@ from src.video import video_fps, video_frame_size
 # Add a new entry for each camera you use.
 # ──────────────────────────────────────────────────────────────────────────────
 
-
 CAMERA_PROFILES: dict[str, CameraIntrinsics] = {
     "iphone13": CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
     "oppo": CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
 }
-  
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -146,7 +144,19 @@ def run(args: argparse.Namespace) -> None:
         sampling_radius=args.depth_radius,
         score_thr=args.pose_thr,
     )
-    keypoints_3d, scores = estimator.lift_to_3d(pose2d_results, video_path)
+
+    keep_maps = args.depthmap_every is not None
+    depth_result = estimator.lift_to_3d(
+        pose2d_results,
+        video_path,
+        keep_depth_maps=keep_maps,
+    )
+
+    if keep_maps:
+        keypoints_3d, scores, depth_maps = depth_result
+    else:
+        keypoints_3d, scores = depth_result
+        depth_maps = None
 
     # ── Step 3 — Back-projection ──────────────────────────────────────────────
     logger.info("[3/4] Back-projecting to camera space...")
@@ -187,6 +197,23 @@ def run(args: argparse.Namespace) -> None:
             score_thr=args.pose_thr,
         )
         logger.info("Debug video saved → %s", debug_path)
+
+    # ── Optional depth map export ─────────────────────────────────────────────
+    if args.depthmap_every is not None and depth_maps is not None:
+        logger.info("Saving depth map frames (every %d)...", args.depthmap_every)
+        from src.visualize import save_depthmaps
+        depthmap_dir = output_dir / f"{stem}_depthmap"
+        save_depthmaps(
+            video_path=video_path,
+            keypoints_2d=kps2d,
+            scores=scores2d,
+            frame_indices=fidxs,
+            depth_maps=depth_maps,
+            output_dir=depthmap_dir,
+            every_n=args.depthmap_every,
+            score_thr=args.pose_thr,
+        )
+        logger.info("Depth maps saved → %s", depthmap_dir)
 
     # ── Optional validation ───────────────────────────────────────────────────
     if args.validate:
@@ -253,6 +280,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # Debug video
     ap.add_argument("--debug-video", action="store_true",
                     help="Render annotated skeleton video to data/processed/")
+
+    # Depth map export
+    ap.add_argument("--depthmap-every", type=int, default=None,
+                    help="Save depth map PNG every N frames (e.g. 10). "
+                         "Saved to data/processed/<name>_depthmap/")
 
     # Validation
     ap.add_argument("--validate", action="store_true",

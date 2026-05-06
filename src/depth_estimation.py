@@ -1,7 +1,7 @@
 """
 depth_estimation.py — Per-frame depth estimation using Depth Anything V2.
 
-Input  : list of Pose2DResult from pose_detector.py + original video path
+Input  : list of Pose2DResult from pose2d.py + original video path
 Output : (T, 9, 3) array — (x, y, z) per active joint per frame
 
 Z values are sampled from the monocular depth map at each joint's (x, y)
@@ -35,8 +35,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.pose_detector import Pose2DResult
-from src.utils import NUM_ACTIVE_JOINTS, load_video_frames
+from src.pose_detector import Pose2DResult, stack_keypoints
+from src.constants import NUM_ACTIVE_JOINTS
+from src.video import load_video_frames
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ class DepthEstimator:
     # Depth map for one frame
     # ------------------------------------------------------------------
 
-    def estimate_depth(self, frame_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def estimate_depth(self, frame_bgr: np.ndarray) -> np.ndarray:
         """
         Run depth estimation on one BGR frame.
 
@@ -159,7 +160,7 @@ class DepthEstimator:
         depth_map: np.ndarray,   # (H, W)
         keypoints: np.ndarray,   # (9, 2)  pixel (x, y)
         scores:    np.ndarray,   # (9,)
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> np.ndarray:
         """
         Sample the depth map at each joint's pixel location.
 
@@ -197,9 +198,10 @@ class DepthEstimator:
 
     def lift_to_3d(
         self,
-        pose2d_results: list[Pose2DResult],
-        video_path:     str | Path,
-    ) -> tuple[np.ndarray, np.ndarray]:
+        pose2d_results:  list[Pose2DResult],
+        video_path:      str | Path,
+        keep_depth_maps: bool = False,
+    ) -> tuple:
         """
         Attach Z values to all 2D pose results, producing a (T, 9, 3) array.
 
@@ -208,13 +210,15 @@ class DepthEstimator:
 
         Parameters
         ----------
-        pose2d_results : output of PoseExtractor.process_video()
-        video_path     : original video (needed to re-read frames for depth)
+        pose2d_results  : output of PoseExtractor.process_video()
+        video_path      : original video (needed to re-read frames for depth)
+        keep_depth_maps : if True, also return list of (H, W) depth maps
 
         Returns
         -------
         keypoints_3d : (T, 9, 3) float32 — (x, y, z) in pixel + depth space
         scores       : (T, 9)    float32 — unchanged from pose2d
+        depth_maps   : list of T (H, W) float32 arrays — only if keep_depth_maps=True
         """
         self._load()
 
@@ -227,8 +231,9 @@ class DepthEstimator:
 
         keypoints_3d = np.zeros((T, NUM_ACTIVE_JOINTS, 3), dtype=np.float32)
         scores_out   = np.zeros((T, NUM_ACTIVE_JOINTS),    dtype=np.float32)
+        depth_maps   = [] if keep_depth_maps else None
 
-        result_cursor = 0  # position in keypoints_3d / scores_out
+        result_cursor = 0
 
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
@@ -249,9 +254,12 @@ class DepthEstimator:
                 depth_map = self.estimate_depth(frame_bgr)
                 z         = self._sample_z(depth_map, pose2d.keypoints, pose2d.scores)
 
-                keypoints_3d[result_cursor, :, :2] = pose2d.keypoints  # x, y
-                keypoints_3d[result_cursor, :,  2] = z                  # z
+                keypoints_3d[result_cursor, :, :2] = pose2d.keypoints
+                keypoints_3d[result_cursor, :,  2] = z
                 scores_out[result_cursor]           = pose2d.scores
+
+                if keep_depth_maps:
+                    depth_maps.append(depth_map)
 
                 result_cursor += 1
                 raw_idx       += 1
@@ -265,4 +273,7 @@ class DepthEstimator:
         logger.info(
             "Depth lifting complete. Output shape: %s", keypoints_3d.shape
         )
-        return keypoints_3d, scores_out  # (T, 9, 3),  (T, 9)
+
+        if keep_depth_maps:
+            return keypoints_3d, scores_out, depth_maps
+        return keypoints_3d, scores_out

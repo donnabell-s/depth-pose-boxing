@@ -82,3 +82,4 @@ requirements.local.txt
 
 # Model checkpoints — downloaded automatically, no need to commit
 models/
+*:Zone.Identifier

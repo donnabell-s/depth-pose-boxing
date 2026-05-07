@@ -235,40 +235,28 @@ class DepthEstimator:
 
         result_cursor = 0
 
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
-            raise RuntimeError(f"Cannot open video: {video_path}")
+        for raw_idx, frame_bgr in load_video_frames(video_path):
+            if result_cursor >= T:
+                break
 
-        raw_idx = 0
-        try:
-            while result_cursor < T:
-                ok, frame_bgr = cap.read()
-                if not ok:
-                    break
+            if raw_idx not in frame_idxs:
+                continue
 
-                if raw_idx not in frame_idxs:
-                    raw_idx += 1
-                    continue
+            pose2d    = frame_map[raw_idx]
+            depth_map = self.estimate_depth(frame_bgr)
+            z         = self._sample_z(depth_map, pose2d.keypoints, pose2d.scores)
 
-                pose2d    = frame_map[raw_idx]
-                depth_map = self.estimate_depth(frame_bgr)
-                z         = self._sample_z(depth_map, pose2d.keypoints, pose2d.scores)
+            keypoints_3d[result_cursor, :, :2] = pose2d.keypoints
+            keypoints_3d[result_cursor, :,  2] = z
+            scores_out[result_cursor]           = pose2d.scores
 
-                keypoints_3d[result_cursor, :, :2] = pose2d.keypoints
-                keypoints_3d[result_cursor, :,  2] = z
-                scores_out[result_cursor]           = pose2d.scores
+            if keep_depth_maps:
+                depth_maps.append(depth_map)
 
-                if keep_depth_maps:
-                    depth_maps.append(depth_map)
+            result_cursor += 1
 
-                result_cursor += 1
-                raw_idx       += 1
-
-                if result_cursor % 50 == 0:
-                    logger.info("Depth lifted %d / %d frames.", result_cursor, T)
-
-        finally:
-            cap.release()
+            if result_cursor % 50 == 0:
+                logger.info("Depth lifted %d / %d frames.", result_cursor, T)
 
         logger.info(
             "Depth lifting complete. Output shape: %s", keypoints_3d.shape

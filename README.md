@@ -124,7 +124,7 @@ CAMERA_PROFILES = {
 python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video
 python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video --depthmap-every 10
 
-python main.py --video data/raw/punch_iphone13.mp4 --camera iphone13 --shoulder-width 0.42
+python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --shoulder-width 0.42
 
 ```
 

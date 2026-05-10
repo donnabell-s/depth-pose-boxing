@@ -62,11 +62,12 @@ def load_video_frames(
     video_path:  str | Path,
     skip_frames: int = 0,
     max_frames:  int | None = None,
+    apply_rotation: bool = True,
 ) -> Generator[tuple[int, any], None, None]:
     """
     Yield (frame_idx, bgr_frame) tuples from a video file.
 
-    Automatically corrects rotation metadata from iPhone MOV files.
+    Automatically corrects rotation metadata from iPhone MOV files (if apply_rotation=True).
 
     Parameters
     ----------
@@ -74,6 +75,7 @@ def load_video_frames(
     skip_frames : process every (skip_frames + 1)-th frame.
                   0 = every frame, 1 = every other frame.
     max_frames  : stop after this many yielded frames (None = full video)
+    apply_rotation : whether to apply rotation correction from metadata (default True)
 
     Yields
     ------
@@ -101,17 +103,21 @@ def load_video_frames(
     # Read rotation metadata — iPhones embed rotation in MOV container.
     # FFMPEG backend makes CAP_PROP_ORIENTATION_META reliable; ffprobe is
     # kept as a fallback for edge cases.
-    rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
-    if rotation == 0:
-        rotation = _read_rotation_ffprobe(video_path)
-    rotation_map = {
-        90:  cv2.ROTATE_90_CLOCKWISE,
-        180: cv2.ROTATE_180,
-        270: cv2.ROTATE_90_COUNTERCLOCKWISE,
-    }
-    rotate_code = rotation_map.get(rotation, None)
-    if rotate_code is not None:
-        logger.info("Applying rotation correction: %d degrees", rotation)
+    rotation = 0
+    rotate_code = None
+    
+    if apply_rotation:
+        rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
+        if rotation == 0:
+            rotation = _read_rotation_ffprobe(video_path)
+        rotation_map = {
+            90:  cv2.ROTATE_90_CLOCKWISE,
+            180: cv2.ROTATE_180,
+            270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+        }
+        rotate_code = rotation_map.get(rotation, None)
+        if rotate_code is not None:
+            logger.info("Applying rotation correction: %d degrees", rotation)
 
     raw_idx = 0
     yielded = 0
@@ -146,9 +152,9 @@ def video_fps(video_path: str | Path) -> float:
     return fps
 
 
-def video_frame_size(video_path: str | Path) -> tuple[int, int]:
+def video_frame_size(video_path: str | Path, apply_rotation: bool = True) -> tuple[int, int]:
     """
-    Return (height, width) of the video frames after rotation correction.
+    Return (height, width) of the video frames after rotation correction (if apply_rotation=True).
 
     Used by backproject.py for camera intrinsics estimation.
     """
@@ -156,9 +162,12 @@ def video_frame_size(video_path: str | Path) -> tuple[int, int]:
     w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
-    if rotation == 0:
-        rotation = _read_rotation_ffprobe(video_path)
+    if apply_rotation:
+        rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
+        if rotation == 0:
+            rotation = _read_rotation_ffprobe(video_path)
+    else:
+        rotation = 0
     cap.release()
 
     # If rotated 90 or 270, width and height are swapped

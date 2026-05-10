@@ -201,6 +201,7 @@ class DepthEstimator:
         pose2d_results:  list[Pose2DResult],
         video_path:      str | Path,
         keep_depth_maps: bool = False,
+        apply_rotation:  bool = True,
     ) -> tuple:
         """
         Attach Z values to all 2D pose results, producing a (T, 9, 3) array.
@@ -213,6 +214,7 @@ class DepthEstimator:
         pose2d_results  : output of PoseExtractor.process_video()
         video_path      : original video (needed to re-read frames for depth)
         keep_depth_maps : if True, also return list of (H, W) depth maps
+        apply_rotation  : whether to apply rotation correction from metadata
 
         Returns
         -------
@@ -235,7 +237,7 @@ class DepthEstimator:
 
         result_cursor = 0
 
-        for raw_idx, frame_bgr in load_video_frames(video_path):
+        for raw_idx, frame_bgr in load_video_frames(video_path, apply_rotation=apply_rotation):
             if result_cursor >= T:
                 break
 

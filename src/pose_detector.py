@@ -216,6 +216,7 @@ class PoseExtractor:
         video_path: str,
         skip_frames: int = 0,
         max_frames:  int | None = None,
+        apply_rotation: bool = True,
     ) -> list[Pose2DResult]:
         """
         Extract 2D poses for every processed frame of a video.
@@ -225,6 +226,7 @@ class PoseExtractor:
         video_path  : path to the video file
         skip_frames : process every (skip_frames + 1)-th frame
         max_frames  : cap on number of frames processed
+        apply_rotation : whether to apply rotation correction from metadata
 
         Returns
         -------
@@ -237,7 +239,7 @@ class PoseExtractor:
         processed = 0
 
         for frame_idx, frame_bgr in load_video_frames(
-            video_path, skip_frames, max_frames
+            video_path, skip_frames, max_frames, apply_rotation=apply_rotation
         ):
             result = self.process_frame(frame_bgr, frame_idx)
             processed += 1

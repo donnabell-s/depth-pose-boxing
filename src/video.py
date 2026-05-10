@@ -11,13 +11,51 @@ here before being yielded to the rest of the pipeline.
 
 from __future__ import annotations
 
+import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Generator
 
 import cv2
 
 logger = logging.getLogger(__name__)
+
+
+def _read_rotation_ffprobe(video_path: Path) -> int:
+    """
+    Read video rotation from container metadata via ffprobe.
+
+    More reliable than CAP_PROP_ORIENTATION_META on Windows (MSMF backend
+    ignores the rotation atom in MOV files). Returns 0 if ffprobe is not
+    available or metadata is absent.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe", "-v", "quiet",
+                "-print_format", "json",
+                "-show_streams",
+                str(video_path),
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        if proc.returncode != 0:
+            return 0
+        data = json.loads(proc.stdout)
+        for stream in data.get("streams", []):
+            # Newer ffprobe: rotation stored in side_data_list
+            for sd in stream.get("side_data_list", []):
+                if "rotation" in sd:
+                    return abs(int(float(sd["rotation"])))
+            # Older ffprobe: rotation stored as a stream tag
+            tags = stream.get("tags", {})
+            for key in ("rotate", "rotation"):
+                if key in tags:
+                    return abs(int(float(tags[key])))
+    except Exception:
+        pass
+    return 0
 
 
 def load_video_frames(
@@ -57,8 +95,11 @@ def load_video_frames(
     )
 
     # Read rotation metadata — iPhones embed rotation in MOV container.
-    # OpenCV ignores this and reads raw pixels, so we correct manually.
-    rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
+    # ffprobe is tried first because Windows' MSMF backend ignores
+    # CAP_PROP_ORIENTATION_META for MOV files.
+    rotation = _read_rotation_ffprobe(video_path)
+    if rotation == 0:
+        rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
     rotation_map = {
         90:  cv2.ROTATE_90_CLOCKWISE,
         180: cv2.ROTATE_180,
@@ -111,7 +152,9 @@ def video_frame_size(video_path: str | Path) -> tuple[int, int]:
     w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
+    rotation = _read_rotation_ffprobe(video_path)
+    if rotation == 0:
+        rotation = int(cap.get(cv2.CAP_PROP_ORIENTATION_META))
     cap.release()
 
     # If rotated 90 or 270, width and height are swapped

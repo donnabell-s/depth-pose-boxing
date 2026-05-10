@@ -187,6 +187,7 @@ def render_skeleton_video(
     scores:        np.ndarray,        # (T, 9)
     frame_indices: np.ndarray,        # (T,) — original frame numbers
     output_path:   str | Path,
+    keypoints_3d:  np.ndarray | None = None,  # (T, 9, 3) — x, y, z; z in [0,1]
     fps:           float = 30.0,
     score_thr:     float = 0.3,
     label_joints:  bool  = False,
@@ -202,6 +203,7 @@ def render_skeleton_video(
     scores        : (T, 9)    float32 — per-joint confidence
     frame_indices : (T,)      int32   — which video frames these correspond to
     output_path   : where to write the annotated video
+    keypoints_3d  : (T, 9, 3) float32 — if provided, z values are drawn at each joint
     fps           : frame rate of the output video
     score_thr     : joints below this threshold drawn as missing
     label_joints  : draw joint names (default False)
@@ -251,6 +253,22 @@ def render_skeleton_video(
                 f"Frame {raw_idx:04d}",
                 (10, 30), _FONT, 0.7, (255, 255, 255), 1, cv2.LINE_AA,
             )
+
+            # Depth (Z) labels at each joint
+            if keypoints_3d is not None:
+                for j in range(9):
+                    if scores[current_t, j] < score_thr:
+                        continue
+                    z_val = float(keypoints_3d[current_t, j, 2])
+                    if z_val == 0.0:
+                        continue
+                    px = int(keypoints_2d[current_t, j, 0])
+                    py = int(keypoints_2d[current_t, j, 1])
+                    colour = _JOINT_COLOURS.get(j, (200, 200, 200))
+                    cv2.putText(
+                        frame, f"z:{z_val:.2f}",
+                        (px + 8, py - 8), _FONT, 0.38, colour, 1, cv2.LINE_AA,
+                    )
 
             # Confidence bar at bottom
             bar_y = H - 20

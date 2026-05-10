@@ -216,10 +216,11 @@ def run(args: argparse.Namespace) -> None:
         from src.visualize import render_skeleton_video
         render_skeleton_video(
             video_path=video_path,
-            keypoints_2d=kps2d,       # (T, 9, 2)
-            scores=scores2d,          # (T, 9)
-            frame_indices=fidxs,      # (T,)
+            keypoints_2d=kps2d,         # (T, 9, 2)
+            scores=scores2d,            # (T, 9)
+            frame_indices=fidxs,        # (T,)
             output_path=debug_path,
+            keypoints_3d=keypoints_3d,  # (T, 9, 3) — z in [0,1] drawn at each joint
             fps=fps,
             score_thr=args.pose_thr,
         )

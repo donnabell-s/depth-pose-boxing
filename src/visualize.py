@@ -2,11 +2,7 @@
 visualize.py — Debug visualisation utilities for depth-pose-boxing.
 
 Provides:
-  render_skeleton_video() — annotated skeleton overlay + live depth graph
-
-The output video is split into two panels:
-  Left  — original video with skeleton overlay
-  Right — live wrist depth graph with vertical progress line
+  render_skeleton_video() — annotated skeleton overlay video
 
 Joint colour coding:
   Red    — wrists (punch endpoints)
@@ -197,11 +193,7 @@ def render_skeleton_video(
     codec:         str   = "mp4v",
 ) -> Path:
     """
-    Write an annotated debug video with skeleton overlay and live depth graph.
-
-    Output layout:
-      Left  panel (original video width)  — skeleton overlay
-      Right panel (50% of video width)    — wrist depth graph with progress line
+    Write an annotated debug video with skeleton overlay.
 
     Parameters
     ----------
@@ -224,18 +216,6 @@ def render_skeleton_video(
     # Build lookup: video frame_idx → sequence position t
     frame_map = {int(fidx): i for i, fidx in enumerate(frame_indices)}
 
-    # Pre-extract wrist Z values for the full graph
-    # Use raw depth from keypoints_2d Z channel if available,
-    # otherwise use the score as a proxy signal
-    # We use scores[:,_L_WRIST] and scores[:,_R_WRIST] as confidence-weighted Z
-    # The actual Z comes from the 3D sequence but we only have 2D here —
-    # use confidence as a visual signal (higher conf = closer detection)
-    z_left  = np.zeros(T, dtype=np.float32)
-    z_right = np.zeros(T, dtype=np.float32)
-    for t in range(T):
-        z_left[t]  = scores[t, _L_WRIST]  if scores[t, _L_WRIST]  >= score_thr else 0.0
-        z_right[t] = scores[t, _R_WRIST] if scores[t, _R_WRIST] >= score_thr else 0.0
-
     # Get frame size after rotation correction
     first_frame = None
     for _, frame in load_video_frames(video_path, max_frames=1):
@@ -245,11 +225,9 @@ def render_skeleton_video(
     if first_frame is None:
         raise RuntimeError(f"Could not read any frames from {video_path}")
 
-    H, W    = first_frame.shape[:2]
-    GW      = W // 2         # graph panel width = 50% of video width
-    out_W   = W + GW         # total output width
-    fourcc  = cv2.VideoWriter_fourcc(*codec)
-    writer  = cv2.VideoWriter(str(output_path), fourcc, fps, (out_W, H))
+    H, W   = first_frame.shape[:2]
+    fourcc = cv2.VideoWriter_fourcc(*codec)
+    writer = cv2.VideoWriter(str(output_path), fourcc, fps, (W, H))
 
     written   = 0
     current_t = 0   # current position in sequence
@@ -290,12 +268,7 @@ def render_skeleton_video(
                 cv2.putText(frame, name, (x0 + 2, bar_y - 14),
                             _FONT, 0.28, (200, 200, 200), 1, cv2.LINE_AA)
 
-        # Build graph panel at current_t
-        graph = _build_graph_panel(H, GW, z_left, z_right, current_t, T)
-
-        # Stitch side by side
-        combined = np.hstack([frame, graph])
-        writer.write(combined)
+        writer.write(frame)
         written += 1
 
     writer.release()

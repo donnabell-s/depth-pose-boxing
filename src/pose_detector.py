@@ -13,7 +13,7 @@ Model options
   "nano"   : YOLOv8n-pose — fastest, lowest accuracy
   "small"  : YOLOv8s-pose — good balance for CPU
   "medium" : YOLOv8m-pose — recommended for GPU
-  "large"  : YOLOv8l-pose — best accuracy (default)
+  "large"  : YOLOv8l-pose — best accuracy
   "xlarge" : YOLOv8x-pose — highest accuracy, most VRAM
 """
 

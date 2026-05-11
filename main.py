@@ -136,7 +136,6 @@ def run(args: argparse.Namespace) -> None:
         video_path,
         skip_frames=args.skip_frames,
         max_frames=args.max_frames,
-        apply_rotation=not args.skip_rotation,
     )
 
     # Save 2D keypoints for debug video rendering
@@ -159,7 +158,6 @@ def run(args: argparse.Namespace) -> None:
         pose2d_results,
         video_path,
         keep_depth_maps=keep_maps,
-        apply_rotation=not args.skip_rotation,
     )
 
     if keep_maps:
@@ -207,7 +205,6 @@ def run(args: argparse.Namespace) -> None:
             keypoints_3d=keypoints_3d,  # (T, 9, 3) — z in [0,1] drawn at each joint
             fps=fps,
             score_thr=args.pose_thr,
-            apply_rotation=not args.skip_rotation,
         )
         logger.info("Debug video saved → %s", debug_path)
 
@@ -289,10 +286,6 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="One Euro Filter min cutoff — lower = smoother at rest")
     ap.add_argument("--beta", type=float, default=0.1,
                     help="One Euro Filter beta — higher = less lag on fast motion")
-
-    # Rotation
-    ap.add_argument("--skip-rotation", action="store_true",
-                    help="Disable automatic rotation correction from video metadata (for debugging)")
 
     # Debug video
     ap.add_argument("--debug-video", action="store_true",

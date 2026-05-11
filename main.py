@@ -147,6 +147,7 @@ def run(args: argparse.Namespace) -> None:
         device=args.device,
         sampling_radius=args.depth_radius,
         score_thr=args.pose_thr,
+        metric_scale_correction=args.metric_scale,
     )
 
     keep_maps = args.depthmap_every is not None
@@ -274,6 +275,9 @@ def _build_parser() -> argparse.ArgumentParser:
                          "and the depth_anything_v2 package (indoor scenes only).")
     ap.add_argument("--depth-radius", type=int, default=2,
                     help="Depth sampling patch radius (0 = single pixel)")
+    ap.add_argument("--metric-scale", type=float, default=0.699,
+                    help="Scale correction for metric depth (calibrated against OAK-D). "
+                         "Only applied when using vit-s/b/l-metric depth models.")
 
     # Step 4 — One Euro Filter
     ap.add_argument("--min-cutoff", type=float, default=1.0,

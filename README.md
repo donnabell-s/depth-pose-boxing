@@ -131,7 +131,9 @@ CAMERA_PROFILES = {
 ```bash
 
 python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video --depthmap-every 10
-python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --depth-model vit-b-metric
+
+python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --depth-model vit-b-metric --debug-video --depthmap-every 10
+
 
 
 ```

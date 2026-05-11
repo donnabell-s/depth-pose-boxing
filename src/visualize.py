@@ -192,7 +192,6 @@ def render_skeleton_video(
     score_thr:     float = 0.3,
     label_joints:  bool  = False,
     codec:         str   = "mp4v",
-    apply_rotation: bool = True,
 ) -> Path:
     """
     Write an annotated debug video with skeleton overlay.
@@ -209,7 +208,6 @@ def render_skeleton_video(
     score_thr     : joints below this threshold drawn as missing
     label_joints  : draw joint names (default False)
     codec         : fourcc codec string
-    apply_rotation : whether to apply rotation correction from metadata
     """
     video_path  = Path(video_path)
     output_path = Path(output_path).with_suffix(".mp4")
@@ -220,9 +218,9 @@ def render_skeleton_video(
     # Build lookup: video frame_idx → sequence position t
     frame_map = {int(fidx): i for i, fidx in enumerate(frame_indices)}
 
-    # Get frame size after rotation correction
+    # Get frame size after auto-rotation
     first_frame = None
-    for _, frame in load_video_frames(video_path, max_frames=1, apply_rotation=apply_rotation):
+    for _, frame in load_video_frames(video_path, max_frames=1):
         first_frame = frame
         break
 
@@ -236,7 +234,7 @@ def render_skeleton_video(
     written   = 0
     current_t = 0   # current position in sequence
 
-    for raw_idx, frame in load_video_frames(video_path, apply_rotation=apply_rotation):
+    for raw_idx, frame in load_video_frames(video_path):
 
         if raw_idx in frame_map:
             current_t = frame_map[raw_idx]

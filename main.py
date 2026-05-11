@@ -120,6 +120,7 @@ def run(args: argparse.Namespace) -> None:
                 intrinsics.fx, intrinsics.fy,
                 intrinsics.cx, intrinsics.cy)
     logger.info("Device   : %s", args.device)
+    logger.info("Rotation fix: %s", "on" if args.apply_rotation else "off (--no-rotation-fix)")
     logger.info("=" * 55)
 
     t_start = time.perf_counter()
@@ -136,6 +137,7 @@ def run(args: argparse.Namespace) -> None:
         video_path,
         skip_frames=args.skip_frames,
         max_frames=args.max_frames,
+        apply_rotation=args.apply_rotation,
     )
 
     # Save 2D keypoints for debug video rendering
@@ -158,6 +160,7 @@ def run(args: argparse.Namespace) -> None:
         pose2d_results,
         video_path,
         keep_depth_maps=keep_maps,
+        apply_rotation=args.apply_rotation,
     )
 
     if keep_maps:
@@ -260,6 +263,12 @@ def _build_parser() -> argparse.ArgumentParser:
     # Device
     ap.add_argument("--device", default="cuda:0",
                     help="PyTorch device — 'cuda:0' or 'cpu'")
+
+    # Video
+    ap.set_defaults(apply_rotation=True)
+    ap.add_argument("--no-rotation-fix", dest="apply_rotation", action="store_false",
+                    help="Disable automatic rotation correction from video metadata. "
+                         "Use for videos already correctly oriented (e.g. MP4 from desktop cameras).")
 
     # Step 1 — YOLOv8-Pose
     ap.add_argument("--pose-model", default="large",

@@ -14,6 +14,8 @@ video.mp4  →  2D keypoints  →  depth map  →  3D coordinates  →  normalis
 
 Output shape: `(T, 9, 3)` — T frames, 9 upper-body joints, XYZ coordinates.
 
+Rotation metadata is read via the FFMPEG backend and `ffprobe` fallback so that iPhone/Android MOV files load correctly on Windows.
+
 ---
 
 ## Project structure
@@ -91,6 +93,8 @@ pip install -r requirements.local.txt
 !bash setup_colab.sh
 ```
 
+> **Windows note:** rotation correction for MOV files requires `ffprobe` (ships with [FFmpeg](https://ffmpeg.org/download.html)). Add it to your PATH, or install via `winget install ffmpeg`.
+
 ---
 
 ## Camera calibration
@@ -111,8 +115,12 @@ Search `"<device name> camera intrinsics fx fy cx cy"`. Make sure the values mat
 **Add a profile in `main.py`:**
 ```python
 CAMERA_PROFILES = {
-    "iphone13": CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
-    "oppo": CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
+    "iphone13": CameraProfile(
+        intrinsics=CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
+    ),
+    "oppo": CameraProfile(
+        intrinsics=CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
+    ),
 }
 ```
 
@@ -121,10 +129,9 @@ CAMERA_PROFILES = {
 ## Running the pipeline
 
 ```bash
-python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video
+
 python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video --depthmap-every 10
 
-python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --shoulder-width 0.42
 
 ```
 
@@ -139,6 +146,7 @@ Output saved to `data/processed/boxer_01.npy`.
 | `--depth-model` | `vit-b` | `vit-s`, `vit-b`, `vit-l` |
 | `--skip-frames` | `0` | Process every N+1 frames |
 | `--device` | `cuda:0` | `cuda:0` or `cpu` |
+| `--debug-video` | off | Write an annotated `.mp4` with skeleton overlay and per-joint Z depth labels |
 
 **With validation against ground truth:**
 ```bash

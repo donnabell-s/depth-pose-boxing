@@ -7,7 +7,7 @@ Public API
 
 Pipeline order (each step is a separate module):
     1. impute.py   — interpolate missing joints
-    2. centre.py   — translate root to mid-shoulder
+    2. centre.py   — translate root to mid-hip (waist)
     3. scale.py    — divide by shoulder-to-shoulder distance
     4. flip Y      — +Y = up (image convention correction)
     5. smooth.py   — One Euro Filter along time axis
@@ -22,7 +22,7 @@ import numpy as np
 
 from src.constants import NUM_ACTIVE_JOINTS
 from src.normalize.impute import impute_missing
-from src.normalize.centre import centre_on_shoulders
+from src.normalize.centre import centre_on_waist
 from src.normalize.scale  import normalise_scale
 from src.normalize.smooth import smooth
 
@@ -86,9 +86,9 @@ def normalize(
     seq = impute_missing(seq, valid)
     logger.debug("Step 1 — imputation done.")
 
-    # 2. Mid-shoulder centring
-    seq = centre_on_shoulders(seq)
-    logger.debug("Step 2 — shoulder centring done.")
+    # 2. Waist (mid-hip) centring
+    seq = centre_on_waist(seq)
+    logger.debug("Step 2 — waist centring done.")
 
     # 3. Scale normalisation
     seq = normalise_scale(seq)

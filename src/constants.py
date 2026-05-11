@@ -6,20 +6,19 @@ ACTIVE_JOINTS, not the original COCO-17 indices.
 
 Local index → joint name:
   0  nose
-  1  left_shoulder   ← normalisation root (mid-shoulder = mean of 1 and 2)
-  2  right_shoulder  ← normalisation root
+  1  left_shoulder
+  2  right_shoulder
   3  left_elbow
   4  right_elbow
   5  left_wrist      ← primary punch endpoint
   6  right_wrist     ← primary punch endpoint
-  7  left_hip
-  8  right_hip
+  7  left_hip        ← normalisation root (mid-hip/waist = mean of 7 and 8)
+  8  right_hip       ← normalisation root
 
 Framing assumption
 ------------------
 Videos are framed thigh-up. Knees and ankles are excluded.
-Hips (local 7, 8) may be partially visible — mid-shoulder is used
-as the normalisation root for reliability.
+Joint positions are expressed relative to the mid-hip (waist) origin.
 """
 
 from __future__ import annotations
@@ -75,6 +74,9 @@ ACTIVE_NAME_TO_IDX: dict[str, int] = {
 
 ROOT_LEFT_IDX:  int = ACTIVE_NAME_TO_IDX["left_shoulder"]   # local 1
 ROOT_RIGHT_IDX: int = ACTIVE_NAME_TO_IDX["right_shoulder"]  # local 2
+
+WAIST_LEFT_IDX:  int = ACTIVE_NAME_TO_IDX["left_hip"]   # local 7
+WAIST_RIGHT_IDX: int = ACTIVE_NAME_TO_IDX["right_hip"]  # local 8
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Skeleton edges — local indices (0–8)

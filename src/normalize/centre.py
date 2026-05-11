@@ -1,26 +1,20 @@
 """
-normalize/centre.py — Mid-shoulder centring.
+normalize/centre.py — Waist centring.
 
-Translates each frame so the midpoint of left_shoulder and right_shoulder
-sits at the origin. This is the normalisation root for this project.
-
-Why mid-shoulder instead of hips
----------------------------------
-Videos are framed thigh-up. The shoulder girdle is always fully visible,
-whereas hips may be partially cropped. A jittery root corrupts the entire
-normalised sequence — shoulders are the reliable choice.
+Translates each frame so the midpoint of left_hip and right_hip
+sits at the origin, making all joint positions waist-relative.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-from src.constants import ROOT_LEFT_IDX, ROOT_RIGHT_IDX
+from src.constants import WAIST_LEFT_IDX, WAIST_RIGHT_IDX
 
 
-def centre_on_shoulders(seq: np.ndarray) -> np.ndarray:
+def centre_on_waist(seq: np.ndarray) -> np.ndarray:
     """
-    Translate each frame so the mid-shoulder point = origin.
+    Translate each frame so the mid-hip (waist) point = origin.
 
     Parameters
     ----------
@@ -28,10 +22,10 @@ def centre_on_shoulders(seq: np.ndarray) -> np.ndarray:
 
     Returns
     -------
-    seq centred on mid-shoulder — same shape.
+    seq centred on mid-hip — same shape.
     """
-    l_sho   = seq[:, ROOT_LEFT_IDX,  :]   # (T, 3)
-    r_sho   = seq[:, ROOT_RIGHT_IDX, :]   # (T, 3)
-    mid_sho = (l_sho + r_sho) / 2.0       # (T, 3)
+    l_hip   = seq[:, WAIST_LEFT_IDX,  :]   # (T, 3)
+    r_hip   = seq[:, WAIST_RIGHT_IDX, :]   # (T, 3)
+    mid_hip = (l_hip + r_hip) / 2.0        # (T, 3)
 
-    return seq - mid_sho[:, None, :]       # broadcast over 9 joints
+    return seq - mid_hip[:, None, :]        # broadcast over 9 joints

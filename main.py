@@ -256,7 +256,7 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="PyTorch device — 'cuda:0' or 'cpu'")
 
     # Video
-    ap.set_defaults(apply_rotation=True)
+    ap.set_defaults(apply_rotation=False)
     ap.add_argument("--no-rotation-fix", dest="apply_rotation", action="store_false",
                     help="Disable automatic rotation correction from video metadata. "
                          "Use for videos already correctly oriented (e.g. MP4 from desktop cameras).")

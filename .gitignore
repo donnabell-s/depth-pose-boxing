@@ -85,3 +85,5 @@ models/
 
 .claude
 .claude/settings.local.json/
+
+depth_anything_v2/

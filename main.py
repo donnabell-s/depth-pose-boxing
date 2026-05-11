@@ -36,31 +36,22 @@ from src.depth_estimation import DepthEstimator
 from src.normalize import NormConfig, normalize
 from src.pose_detector import PoseExtractor, stack_keypoints, frame_indices
 from src.data_validation import load_ground_truth, print_report
-from src.velocity import compute_velocity
 from src.video import video_fps, video_frame_size
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Camera profiles
-# Fill in your calibrated values from calibrate.py.
-# Add a new entry for each camera you use.
-# shoulder_width_m: measured shoulder-to-shoulder distance in metres (optional).
-#   When set, velocity output is converted to m/s; leave None to use
-#   normalised units or override per-run with --shoulder-width.
+# Camera profiles — fill in calibrated values from calibrate.py.
 # ──────────────────────────────────────────────────────────────────────────────
 
 class CameraProfile(NamedTuple):
-    intrinsics:       CameraIntrinsics
-    shoulder_width_m: float | None = None
+    intrinsics: CameraIntrinsics
 
 
 CAMERA_PROFILES: dict[str, CameraProfile] = {
     "iphone13": CameraProfile(
         intrinsics=CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
-        shoulder_width_m=None,
     ),
     "oppo": CameraProfile(
         intrinsics=CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
-        shoulder_width_m=None,
     ),
 }
 
@@ -195,15 +186,6 @@ def run(args: argparse.Namespace) -> None:
     # ── Save 3D output ────────────────────────────────────────────────────────
     np.save(output_path, sequence)
 
-    # ── Velocity ──────────────────────────────────────────────────────────────
-    shoulder_width_m = (profile.shoulder_width_m
-                        if profile.shoulder_width_m is not None
-                        else args.shoulder_width)
-    velocity_path = output_dir / f"{stem}_velocity.npy"
-    velocity      = compute_velocity(sequence, fps=fps, shoulder_width_m=shoulder_width_m)
-    np.save(velocity_path, velocity)
-    logger.info("Velocity saved → %s", velocity_path)
-
     t_total = time.perf_counter() - t_start
 
     logger.info("=" * 55)
@@ -301,12 +283,6 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Depth Anything V2 model variant")
     ap.add_argument("--depth-radius", type=int, default=2,
                     help="Depth sampling patch radius (0 = single pixel)")
-
-    # Velocity
-    ap.add_argument("--shoulder-width", type=float, default=None,
-                    help="Shoulder-to-shoulder distance in metres — converts velocity "
-                         "output to m/s. Overridden by shoulder_width_m in "
-                         "CAMERA_PROFILES if that entry is non-None.")
 
     # Step 4 — One Euro Filter
     ap.add_argument("--min-cutoff", type=float, default=1.0,

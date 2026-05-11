@@ -11,9 +11,6 @@ Usage
 With debug video output:
     python main.py --video data/raw/boxer_01.mp4 --camera iphone13 --debug-video
 
-Validate against ground truth after processing:
-    python main.py --video data/raw/boxer_01.mp4 --camera iphone13 --validate --gt data/athlete_pose_3d/boxer_01.npy
-
 Camera profiles
 ---------------
 Add your calibrated intrinsics to CAMERA_PROFILES below.
@@ -35,7 +32,6 @@ from src.backproject import CameraIntrinsics, backproject
 from src.depth_estimation import DepthEstimator
 from src.normalize import NormConfig, normalize
 from src.pose_detector import PoseExtractor, stack_keypoints, frame_indices
-from src.data_validation import load_ground_truth, print_report
 from src.video import video_fps, video_frame_size
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -186,6 +182,8 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Save 3D output ────────────────────────────────────────────────────────
     np.save(output_path, sequence)
+    depth_mode = "metric (metres)" if estimator.is_metric else "relative [0, 1]"
+    logger.info("Depth mode   : %s — model: %s", depth_mode, args.depth_model)
 
     t_total = time.perf_counter() - t_start
 
@@ -229,13 +227,6 @@ def run(args: argparse.Namespace) -> None:
         logger.info("Depth maps saved → %s", depthmap_dir)
 
     # ── Optional validation ───────────────────────────────────────────────────
-    if args.validate:
-        if not args.gt:
-            logger.error("--validate requires --gt <ground_truth.npy>")
-            sys.exit(1)
-        logger.info("Validating against ground truth...")
-        gt = load_ground_truth(args.gt, num_frames=sequence.shape[0])
-        print_report(sequence, gt)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -285,8 +276,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Step 2 — Depth Anything V2
     ap.add_argument("--depth-model", default="vit-b",
-                    choices=["vit-s", "vit-b", "vit-l"],
-                    help="Depth Anything V2 model variant")
+                    choices=["vit-s", "vit-b", "vit-l",
+                             "vit-s-metric", "vit-b-metric", "vit-l-metric"],
+                    help="Depth Anything V2 model variant. "
+                         "Metric variants require local .pth checkpoints in models/ "
+                         "and the depth_anything_v2 package (indoor scenes only).")
     ap.add_argument("--depth-radius", type=int, default=2,
                     help="Depth sampling patch radius (0 = single pixel)")
 
@@ -304,12 +298,6 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--depthmap-every", type=int, default=None,
                     help="Save depth map PNG every N frames (e.g. 10). "
                          "Saved to data/processed/<name>_depthmap/")
-
-    # Validation
-    ap.add_argument("--validate", action="store_true",
-                    help="Run MPJPE validation after processing")
-    ap.add_argument("--gt", default=None,
-                    help="Path to ground truth .npy for validation")
 
     return ap
 

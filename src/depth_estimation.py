@@ -13,11 +13,24 @@ This module normalises to [0, 1] and flips so that:
     z = 0  →  closest to camera
     z = 1  →  farthest from camera
 
+Model variants
+--------------
+Relative models — "vit-s", "vit-b", "vit-l":
+    Loaded from HuggingFace hub via transformers.pipeline().
+    Output is normalised [0, 1], no physical units.
+
+Metric models — "vit-s-metric", "vit-b-metric", "vit-l-metric":
+    Loaded from local .pth checkpoints in models/ using DepthAnythingV2.
+    Output is in metres (raw float32, not normalised).
+    Intended for indoor scenes only (dataset=hypersim, max_depth=20).
+    Requires the depth_anything_v2 package — clone the Depth Anything V2
+    repo into the project root so that depth_anything_v2/ is importable.
+
 Model options (pick based on available VRAM)
 --------------------------------------------
-  "vit-s" : ~2 GB  — use on Colab free tier T4 or limited GPU
-  "vit-b" : ~4 GB  — recommended for offline batch processing
-  "vit-l" : ~8 GB  — highest quality, use if VRAM allows
+  "vit-s" / "vit-s-metric" : ~2 GB  — use on Colab free tier T4 or limited GPU
+  "vit-b" / "vit-b-metric" : ~4 GB  — recommended for offline batch processing
+  "vit-l" / "vit-l-metric" : ~8 GB  — highest quality, use if VRAM allows
 
 Sampling strategy
 -----------------
@@ -46,10 +59,13 @@ logger = logging.getLogger(__name__)
 # Model registry
 # ──────────────────────────────────────────────────────────────────────────────
 
-_MODELS: dict[str, str] = {
+_MODELS: dict[str, str | dict] = {
     "vit-s": "depth-anything/Depth-Anything-V2-Small-hf",
     "vit-b": "depth-anything/Depth-Anything-V2-Base-hf",
     "vit-l": "depth-anything/Depth-Anything-V2-Large-hf",
+    "vit-s-metric": {"encoder": "vits", "features": 64,  "out_channels": [48, 96, 192, 384],    "checkpoint": "models/depth_anything_v2_metric_hypersim_vits.pth"},
+    "vit-b-metric": {"encoder": "vitb", "features": 128, "out_channels": [96, 192, 384, 768],    "checkpoint": "models/depth_anything_v2_metric_hypersim_vitb.pth"},
+    "vit-l-metric": {"encoder": "vitl", "features": 256, "out_channels": [256, 512, 1024, 1024], "checkpoint": "models/depth_anything_v2_metric_hypersim_vitl.pth"},
 }
 
 
@@ -59,11 +75,12 @@ _MODELS: dict[str, str] = {
 
 class DepthEstimator:
     """
-    Wraps Depth Anything V2 via HuggingFace transformers.
+    Wraps Depth Anything V2 via HuggingFace transformers (relative) or local
+    .pth checkpoint (metric).
 
     Parameters
     ----------
-    model           : "vit-s" | "vit-b" | "vit-l"
+    model           : "vit-s" | "vit-b" | "vit-l" | "vit-s-metric" | "vit-b-metric" | "vit-l-metric"
     device          : "cuda:0" | "cpu"
     sampling_radius : patch radius for Z sampling at each joint pixel.
                       0 = single pixel, 2 = 5×5 patch (recommended).
@@ -84,33 +101,70 @@ class DepthEstimator:
         self.sampling_radius = sampling_radius
         self.score_thr       = score_thr
         self._pipe           = None
+        self._metric_model   = None
+
+    # ------------------------------------------------------------------
+    # Properties
+    # ------------------------------------------------------------------
+
+    @property
+    def is_metric(self) -> bool:
+        """True if this instance uses a metric depth model."""
+        return self.model.endswith("-metric")
 
     # ------------------------------------------------------------------
     # Lazy load
     # ------------------------------------------------------------------
 
     def _load(self) -> None:
-        if self._pipe is not None:
-            return
+        if self.is_metric:
+            if self._metric_model is not None:
+                return
 
-        try:
-            from transformers import pipeline as hf_pipeline  # type: ignore
-        except ImportError as exc:
-            raise ImportError(
-                "transformers is not installed.\n"
-                "Run:  pip install transformers"
-            ) from exc
+            try:
+                import torch
+                from depth_anything_v2.dpt import DepthAnythingV2  # type: ignore
+            except ImportError as exc:
+                raise ImportError(
+                    "depth_anything_v2 is not available.\n"
+                    "Clone the Depth Anything V2 repo into the project root:\n"
+                    "  git clone https://github.com/DepthAnything/Depth-Anything-V2\n"
+                    "so that depth_anything_v2/ is importable."
+                ) from exc
 
-        repo  = _MODELS[self.model]
-        gpu   = 0 if "cuda" in self.device else -1
-        logger.info("Loading Depth Anything V2 — variant: %s", self.model)
+            cfg = _MODELS[self.model]
+            logger.info("Loading Depth Anything V2 metric model — variant: %s", self.model)
+            model = DepthAnythingV2(
+                encoder=cfg["encoder"],
+                features=cfg["features"],
+                out_channels=cfg["out_channels"],
+                max_depth=20,
+            )
+            model.load_state_dict(torch.load(cfg["checkpoint"], map_location="cpu"))
+            self._metric_model = model.to(self.device).eval()
+            logger.info("Depth Anything V2 metric model ready.")
+        else:
+            if self._pipe is not None:
+                return
 
-        self._pipe = hf_pipeline(
-            task="depth-estimation",
-            model=repo,
-            device=gpu,
-        )
-        logger.info("Depth Anything V2 ready.")
+            try:
+                from transformers import pipeline as hf_pipeline  # type: ignore
+            except ImportError as exc:
+                raise ImportError(
+                    "transformers is not installed.\n"
+                    "Run:  pip install transformers"
+                ) from exc
+
+            repo = _MODELS[self.model]
+            gpu  = 0 if "cuda" in self.device else -1
+            logger.info("Loading Depth Anything V2 — variant: %s", self.model)
+
+            self._pipe = hf_pipeline(
+                task="depth-estimation",
+                model=repo,
+                device=gpu,
+            )
+            logger.info("Depth Anything V2 ready.")
 
     # ------------------------------------------------------------------
     # Depth map for one frame
@@ -122,10 +176,20 @@ class DepthEstimator:
 
         Returns
         -------
-        depth : (H, W) float32, values in [0, 1]
-                0 = closest to camera, 1 = farthest from camera
+        depth : (H, W) float32
+            Relative models: normalised [0, 1] — 0 = closest, 1 = farthest.
+            Metric models  : raw depth in metres — larger = farther, no normalisation.
         """
         self._load()
+
+        h, w = frame_bgr.shape[:2]
+
+        if self.is_metric:
+            # DepthAnythingV2.infer_image accepts BGR and returns (H, W) float32 in metres.
+            depth = self._metric_model.infer_image(frame_bgr).astype(np.float32)
+            if depth.shape != (h, w):
+                depth = cv2.resize(depth, (w, h), interpolation=cv2.INTER_LINEAR)
+            return depth
 
         from PIL import Image as PILImage  # type: ignore
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -134,7 +198,6 @@ class DepthEstimator:
         raw = np.array(self._pipe(pil_img)["depth"], dtype=np.float32)  # (H, W)
 
         # Resize to match source frame if model downsampled
-        h, w = frame_bgr.shape[:2]
         if raw.shape != (h, w):
             raw = cv2.resize(raw, (w, h), interpolation=cv2.INTER_LINEAR)
 
@@ -218,7 +281,7 @@ class DepthEstimator:
 
         Returns
         -------
-        keypoints_3d : (T, 9, 3) float32 — (x, y, z) in pixel + depth space
+        keypoints_3d : (T, 9, 3) float32 — (x, y, z) where x and y are pixel coordinates and z is depth — relative normalised [0,1] when using vit-s/b/l models, or metric depth in metres when using vit-s/b/l-metric models
         scores       : (T, 9)    float32 — unchanged from pose2d
         depth_maps   : list of T (H, W) float32 arrays — only if keep_depth_maps=True
         """

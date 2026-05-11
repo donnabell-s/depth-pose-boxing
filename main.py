@@ -43,12 +43,15 @@ class CameraProfile(NamedTuple):
 
 
 CAMERA_PROFILES: dict[str, CameraProfile] = {
+    # Front-facing cameras (default): use --front-camera (default) to correct mirroring.
     "iphone13": CameraProfile(
         intrinsics=CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
     ),
+    # Front-facing camera: use --front-camera (default).
     "oppo": CameraProfile(
         intrinsics=CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
     ),
+    # Rear-facing cameras: add profiles here and use --no-front-camera.
 }
 
 
@@ -132,6 +135,7 @@ def run(args: argparse.Namespace) -> None:
         video_path,
         skip_frames=args.skip_frames,
         max_frames=args.max_frames,
+        front_camera=args.front_camera,
     )
 
     # Save 2D keypoints for debug video rendering
@@ -155,6 +159,7 @@ def run(args: argparse.Namespace) -> None:
         pose2d_results,
         video_path,
         keep_depth_maps=keep_maps,
+        front_camera=args.front_camera,
     )
 
     if keep_maps:
@@ -204,6 +209,7 @@ def run(args: argparse.Namespace) -> None:
             keypoints_3d=keypoints_3d,  # (T, 9, 3) — z in [0,1] drawn at each joint
             fps=fps,
             score_thr=args.pose_thr,
+            front_camera=args.front_camera,
         )
         logger.info("Debug video saved → %s", debug_path)
 
@@ -221,6 +227,7 @@ def run(args: argparse.Namespace) -> None:
             output_dir=depthmap_dir,
             every_n=args.depthmap_every,
             score_thr=args.pose_thr,
+            front_camera=args.front_camera,
         )
         logger.info("Depth maps saved → %s", depthmap_dir)
 
@@ -284,6 +291,12 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="One Euro Filter min cutoff — lower = smoother at rest")
     ap.add_argument("--beta", type=float, default=0.1,
                     help="One Euro Filter beta — higher = less lag on fast motion")
+
+    # Front camera
+    ap.add_argument("--front-camera", action="store_true", default=True,
+                    help="Flip frames horizontally to correct front camera mirroring (default: True)")
+    ap.add_argument("--no-front-camera", dest="front_camera", action="store_false",
+                    help="Disable horizontal flip — use for rear camera or already-corrected footage")
 
     # Debug video
     ap.add_argument("--debug-video", action="store_true",

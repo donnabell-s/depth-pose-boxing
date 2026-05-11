@@ -192,6 +192,7 @@ def render_skeleton_video(
     score_thr:     float = 0.3,
     label_joints:  bool  = False,
     codec:         str   = "mp4v",
+    front_camera:  bool  = True,
 ) -> Path:
     """
     Write an annotated debug video with skeleton overlay.
@@ -220,7 +221,7 @@ def render_skeleton_video(
 
     # Get frame size after auto-rotation
     first_frame = None
-    for _, frame in load_video_frames(video_path, max_frames=1):
+    for _, frame in load_video_frames(video_path, max_frames=1, front_camera=front_camera):
         first_frame = frame
         break
 
@@ -234,7 +235,7 @@ def render_skeleton_video(
     written   = 0
     current_t = 0   # current position in sequence
 
-    for raw_idx, frame in load_video_frames(video_path):
+    for raw_idx, frame in load_video_frames(video_path, front_camera=front_camera):
 
         if raw_idx in frame_map:
             current_t = frame_map[raw_idx]
@@ -311,6 +312,7 @@ def save_depthmaps(
     output_dir:    str | Path,
     every_n:       int   = 10,
     score_thr:     float = 0.3,
+    front_camera:  bool  = True,
 ) -> list[Path]:
     """
     Save every Nth depth map frame as a PNG with:

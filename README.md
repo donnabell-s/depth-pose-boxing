@@ -79,6 +79,7 @@ source venv/bin/activate
  
 # 2. Install dependencies
 pip install -r requirements.txt
+<<<<<<< HEAD
  
 # 3. Fix numpy/xtcocotools compatibility
 pip install "numpy<2.0"
@@ -96,6 +97,9 @@ mkdir -p models
 # Download checkpoint (vitb recommended for balance of speed/accuracy):
 wget -O models/depth_anything_v2_metric_hypersim_vitb.pth \
   "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Hypersim-Base/resolve/main/depth_anything_v2_metric_hypersim_vitb.pth"
+=======
+pip install ultralytics
+>>>>>>> 12ba3ea572e5f0864e61b8b31edea61b29b4520b
 ```
 
 ### Local development (CPU only)
@@ -141,7 +145,18 @@ CAMERA_PROFILES = {
 ## Running the pipeline
  
 ```bash
+<<<<<<< HEAD
 python main.py --video data/raw/boxer_01.MOV --camera iphone13
+=======
+
+python main.py --video data/raw/punch_iphone13_1.MOV --camera iphone13 --debug-video --depthmap-every 10
+
+python main.py --video data/raw/punch_iphone13_1.MOV --camera iphone13 --depth-model vit-b-metric --debug-video --depthmap-every 10
+
+python stitch_depthmaps.py data/processed/punch_iphone13_1_depthmap   -o data/processed/punch_iphone13_2_depthmap.mp4 --source-fps 30
+
+
+>>>>>>> 12ba3ea572e5f0864e61b8b31edea61b29b4520b
 ```
  
 Output saved to `data/processed/boxer_01.npy`.

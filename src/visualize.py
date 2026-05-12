@@ -178,9 +178,13 @@ def render_skeleton_video(
                     px = int(keypoints_2d[current_t, j, 0])
                     py = int(keypoints_2d[current_t, j, 1])
                     colour = _JOINT_COLOURS.get(j, (200, 200, 200))
+                    cv2.putText(  # dark outline for readability
+                        frame, f"zn:{z_val:.2f}",
+                        (px + 8, py - 8), _FONT, 0.6, (0, 0, 0), 4, cv2.LINE_AA,
+                    )
                     cv2.putText(
                         frame, f"zn:{z_val:.2f}",
-                        (px + 8, py - 8), _FONT, 0.38, colour, 1, cv2.LINE_AA,
+                        (px + 8, py - 8), _FONT, 0.6, colour, 1, cv2.LINE_AA,
                     )
 
             # Confidence bar at bottom
@@ -282,10 +286,15 @@ def save_depthmaps(
             # Depth value at joint
             z_val = float(depth_map[cy, cx])
             label = f"{ACTIVE_JOINT_NAMES.get(j, str(j)).replace('_', ' ')}: {z_val:.3f}"
+            cv2.putText(  # dark outline for readability
+                depth_colour, label,
+                (cx + 10, cy - 4),
+                _FONT, 0.6, (0, 0, 0), 4, cv2.LINE_AA,
+            )
             cv2.putText(
                 depth_colour, label,
                 (cx + 10, cy - 4),
-                _FONT, 0.38, colour, 1, cv2.LINE_AA,
+                _FONT, 0.6, colour, 1, cv2.LINE_AA,
             )
 
         # ── Frame info ────────────────────────────────────────────────────

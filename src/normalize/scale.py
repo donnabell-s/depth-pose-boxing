@@ -34,7 +34,7 @@ def normalise_scale(seq: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    seq : (T, 9, 3) float32 — already centred on mid-shoulder
+    seq : (T, 9, 3) float32 — already centred on mid-hip (waist)
 
     Returns
     -------

@@ -200,13 +200,16 @@ def run(args: argparse.Namespace) -> None:
     if args.debug_video:
         logger.info("Rendering debug video...")
         from src.visualize import render_skeleton_video
+        # keypoints_3d here is the raw output from lift_to_3d() — pixel (x, y) + raw
+        # depth z — intentionally pre-backprojection and pre-normalisation so you can
+        # inspect raw depth quality. The normalised body-relative output is the .npy.
         render_skeleton_video(
             video_path=video_path,
             keypoints_2d=kps2d,         # (T, 9, 2)
             scores=scores2d,            # (T, 9)
             frame_indices=fidxs,        # (T,)
             output_path=debug_path,
-            keypoints_3d=keypoints_3d,  # (T, 9, 3) — z in [0,1] drawn at each joint
+            keypoints_3d=keypoints_3d,  # (T, 9, 3) — raw depth z, NOT normalised
             fps=fps,
             score_thr=args.pose_thr,
             front_camera=args.front_camera,
@@ -249,7 +252,7 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Path to input video (MP4 / AVI / MOV)")
 
     # Camera
-    ap.add_argument("--camera", default="default",
+    ap.add_argument("--camera", default="iphone13",
                     help="Camera profile name from CAMERA_PROFILES in main.py")
 
     # Output

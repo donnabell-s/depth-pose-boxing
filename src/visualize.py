@@ -52,9 +52,6 @@ _JOINT_COLOURS: dict[int, tuple[int, int, int]] = {
     8: (  0, 200,  80),   # R hip      — green
 }
 
-_L_WRIST_COLOUR = (  0,  60, 255)   # red   — left wrist depth line
-_R_WRIST_COLOUR = (  0, 160, 255)   # orange — right wrist depth line
-_PROGRESS_COLOUR = (  0, 255, 255)  # yellow — progress line
 _BONE_COLOUR    = (180, 180, 180)
 _MISSING_COLOUR = (  0,   0, 100)
 _FONT           = cv2.FONT_HERSHEY_SIMPLEX
@@ -90,91 +87,6 @@ def _draw_skeleton(
         cv2.circle(out, pt, size, (255, 255, 255), 1, cv2.LINE_AA)
 
     return out
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Depth graph panel
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _build_graph_panel(
-    H: int,
-    W: int,
-    z_left:   np.ndarray,   # (T,) normalised Z for left wrist
-    z_right:  np.ndarray,   # (T,) normalised Z for right wrist
-    current_t: int,         # current frame index in the sequence
-    T: int,                 # total number of frames
-) -> np.ndarray:
-    """
-    Build a (H, W, 3) BGR graph panel showing wrist depth over time
-    with a vertical progress line at current_t.
-    """
-    panel = np.full((H, W, 3), _BG_COLOUR, dtype=np.uint8)
-
-    pad_x = 50   # left padding for y-axis labels
-    pad_y = 30   # top/bottom padding
-    gw    = W - pad_x - 10   # graph width
-    gh    = H - 2 * pad_y    # graph height
-
-    # Normalise Z values to [0, 1] for display
-    all_z  = np.concatenate([z_left, z_right])
-    valid  = all_z[all_z != 0]
-    z_min  = float(valid.min()) if len(valid) > 0 else 0.0
-    z_max  = float(valid.max()) if len(valid) > 0 else 1.0
-    z_range = max(z_max - z_min, 1e-6)
-
-    def to_px(t: int, z: float) -> tuple[int, int]:
-        x = pad_x + int((t / max(T - 1, 1)) * gw)
-        y = pad_y + gh - int(((z - z_min) / z_range) * gh)
-        y = max(pad_y, min(pad_y + gh, y))
-        return x, y
-
-    # Draw grid lines
-    for i in range(5):
-        gy = pad_y + int(i * gh / 4)
-        cv2.line(panel, (pad_x, gy), (pad_x + gw, gy), (40, 40, 60), 1)
-        z_val = z_max - (i / 4) * z_range
-        cv2.putText(panel, f"{z_val:.2f}", (2, gy + 4),
-                    _FONT, 0.28, (120, 120, 140), 1, cv2.LINE_AA)
-
-    # Draw wrist depth lines
-    for t in range(1, T):
-        if z_left[t] != 0 and z_left[t - 1] != 0:
-            p1 = to_px(t - 1, z_left[t - 1])
-            p2 = to_px(t,     z_left[t])
-            cv2.line(panel, p1, p2, _L_WRIST_COLOUR, 2, cv2.LINE_AA)
-
-        if z_right[t] != 0 and z_right[t - 1] != 0:
-            p1 = to_px(t - 1, z_right[t - 1])
-            p2 = to_px(t,     z_right[t])
-            cv2.line(panel, p1, p2, _R_WRIST_COLOUR, 2, cv2.LINE_AA)
-
-    # Draw progress line
-    px = pad_x + int((current_t / max(T - 1, 1)) * gw)
-    cv2.line(panel, (px, pad_y), (px, pad_y + gh), _PROGRESS_COLOUR, 2, cv2.LINE_AA)
-
-    # Draw current Z values
-    if z_left[current_t] != 0:
-        cv2.putText(panel, f"L: {z_left[current_t]:.3f}",
-                    (px + 4, pad_y + 20), _FONT, 0.4, _L_WRIST_COLOUR, 1, cv2.LINE_AA)
-    if z_right[current_t] != 0:
-        cv2.putText(panel, f"R: {z_right[current_t]:.3f}",
-                    (px + 4, pad_y + 40), _FONT, 0.4, _R_WRIST_COLOUR, 1, cv2.LINE_AA)
-
-    # Legend
-    cv2.putText(panel, "Left wrist depth",  (pad_x, H - 12),
-                _FONT, 0.4, _L_WRIST_COLOUR, 1, cv2.LINE_AA)
-    cv2.putText(panel, "Right wrist depth", (pad_x + 140, H - 12),
-                _FONT, 0.4, _R_WRIST_COLOUR, 1, cv2.LINE_AA)
-
-    # Title
-    cv2.putText(panel, "Wrist Z (depth) over time",
-                (pad_x, 18), _FONT, 0.5, (200, 200, 220), 1, cv2.LINE_AA)
-
-    # Axis border
-    cv2.rectangle(panel, (pad_x, pad_y), (pad_x + gw, pad_y + gh),
-                  (80, 80, 100), 1)
-
-    return panel
 
 
 # ──────────────────────────────────────────────────────────────────────────────

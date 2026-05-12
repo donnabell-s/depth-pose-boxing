@@ -79,7 +79,6 @@ source venv/bin/activate
  
 # 2. Install dependencies
 pip install -r requirements.txt
-<<<<<<< HEAD
  
 # 3. Fix numpy/xtcocotools compatibility
 pip install "numpy<2.0"
@@ -97,9 +96,6 @@ mkdir -p models
 # Download checkpoint (vitb recommended for balance of speed/accuracy):
 wget -O models/depth_anything_v2_metric_hypersim_vitb.pth \
   "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Hypersim-Base/resolve/main/depth_anything_v2_metric_hypersim_vitb.pth"
-=======
-pip install ultralytics
->>>>>>> 12ba3ea572e5f0864e61b8b31edea61b29b4520b
 ```
 
 ### Local development (CPU only)
@@ -145,18 +141,7 @@ CAMERA_PROFILES = {
 ## Running the pipeline
  
 ```bash
-<<<<<<< HEAD
 python main.py --video data/raw/boxer_01.MOV --camera iphone13
-=======
-
-python main.py --video data/raw/punch_iphone13_1.MOV --camera iphone13 --debug-video --depthmap-every 10
-
-python main.py --video data/raw/punch_iphone13_1.MOV --camera iphone13 --depth-model vit-b-metric --debug-video --depthmap-every 10
-
-python stitch_depthmaps.py data/processed/punch_iphone13_1_depthmap   -o data/processed/punch_iphone13_2_depthmap.mp4 --source-fps 30
-
-
->>>>>>> 12ba3ea572e5f0864e61b8b31edea61b29b4520b
 ```
  
 Output saved to `data/processed/boxer_01.npy`.
@@ -192,6 +177,11 @@ python main.py --video data/raw/boxer_01.MOV --camera iphone13 --depth-model vit
 python main.py --video data/raw/boxer_01.MOV --camera iphone13 --debug-video --depthmap-every 10
 ```
 
+**Stitch depth map PNGs into a video:**
+```bash
+python stitch_depthmaps.py data/processed/boxer_01_depthmap -o data/processed/boxer_01_depthmap.mp4 --source-fps 30
+```
+
 
 ---
 
@@ -205,7 +195,6 @@ jupyter notebook visualize.ipynb
 Set `NPY_PATH` and `VELOCITY_PATH` in the first cell. The notebook shows:
 - 3D skeleton for a single frame (interactive, rotatable)
 - Wrist and shoulder trajectories over time
-- Wrist velocity spikes over time
 - Raw XYZ values for the first 5 frames
 
 ---
@@ -215,7 +204,7 @@ Set `NPY_PATH` and `VELOCITY_PATH` in the first cell. The notebook shows:
 Applied in this order to every sequence:
 
 1. **Missing joint imputation** — linear interpolation over occluded frames
-2. **Mid-shoulder centring** — origin at midpoint of shoulders each frame
+2. **Mid-hip (waist) centring** — origin at midpoint of left and right hip each frame
 3. **Scale normalisation** — divide by median shoulder-to-shoulder distance
 4. **Y-axis flip** — `+Y = up` (corrects image coordinate convention)
 5. **One Euro Filter** — adaptive smoothing, minimal lag during punches
@@ -233,4 +222,4 @@ Applied in this order to every sequence:
 | `vit-b-metric` | Metric | metres | Recommended for metric use |
 | `vit-l-metric` | Metric | metres | Highest quality metric |
  
-Metric depth is calibrated against OAK-D stereo ground truth (`--metric-scale 0.699`).
+Metric depth is calibrated against OAK-D stereo ground truth (--metric-scale 0.699).

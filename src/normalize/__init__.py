@@ -36,17 +36,18 @@ class NormConfig:
 
     Attributes
     ----------
-    fps        : video frame rate — used for One Euro Filter cutoff
-    score_thr  : joints below this are treated as missing
-    min_cutoff : One Euro Filter — lower = smoother at rest
-    beta       : One Euro Filter — higher = less lag during fast motion
-    flip_y     : flip Y axis so +Y = up (recommended: True)
+    fps           : video frame rate — passed to features.py for derivative scaling
+    score_thr     : joints below this are treated as missing
+    sg_window     : Savitzky-Golay window length — must be odd and > sg_polyorder.
+                    Default 7 ≈ 0.23 s at 30 fps. Increase for heavier smoothing.
+    sg_polyorder  : Savitzky-Golay polynomial order. Default 3.
+    flip_y        : flip Y axis so +Y = up (recommended: True)
     """
-    fps:        float = 30.0
-    score_thr:  float = 0.3
-    min_cutoff: float = 1.0
-    beta:       float = 0.1
-    flip_y:     bool  = True
+    fps:          float = 30.0
+    score_thr:    float = 0.3
+    sg_window:    int   = 7
+    sg_polyorder: int   = 3
+    flip_y:       bool  = True
 
 
 def normalize(
@@ -99,8 +100,8 @@ def normalize(
         seq[:, :, 1] = -seq[:, :, 1]
         logger.debug("Step 4 — Y-axis flip done.")
 
-    # 5. One Euro Filter smoothing
-    seq = smooth(seq, cfg.fps, cfg.min_cutoff, cfg.beta)
+    # 5. Savitzky-Golay smoothing
+    seq = smooth(seq, cfg.fps, cfg.sg_window, cfg.sg_polyorder)
     logger.debug("Step 5 — smoothing done.")
 
     logger.info(

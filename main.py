@@ -30,6 +30,7 @@ import numpy as np
 
 from src.backproject import CameraIntrinsics, backproject
 from src.depth_estimation import DepthEstimator
+from src.features import extract_kinematic_features, smooth_metric
 from src.normalize import NormConfig, normalize
 from src.pose_detector import PoseExtractor, stack_keypoints, frame_indices
 from src.video import video_fps, video_frame_size
@@ -99,13 +100,14 @@ def run(args: argparse.Namespace) -> None:
         logger.error("Video not found: %s", video_path)
         sys.exit(1)
 
-    output_dir   = Path(args.output_dir)
+    output_dir       = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    stem         = video_path.stem
-    output_path  = output_dir / f"{stem}.npy"
-    camera_path  = output_dir / f"{stem}_camera.npy"
-    kp2d_path    = output_dir / f"{stem}_2d.npy"
-    debug_path   = output_dir / f"{stem}_debug.mp4"
+    stem             = video_path.stem
+    pose_norm_path   = output_dir / f"{stem}_pose_norm.npy"
+    camera_path      = output_dir / f"{stem}_camera.npy"
+    kinematics_path  = output_dir / f"{stem}_kinematics.npz"
+    kp2d_path        = output_dir / f"{stem}_2d.npy"
+    debug_path       = output_dir / f"{stem}_debug.mp4"
 
     # ── Read video metadata ───────────────────────────────────────────────────
     fps = video_fps(video_path)
@@ -181,23 +183,48 @@ def run(args: argparse.Namespace) -> None:
     cfg = NormConfig(
         fps=fps,
         score_thr=args.pose_thr,
-        min_cutoff=args.min_cutoff,
-        beta=args.beta,
+        sg_window=args.sg_window,
+        sg_polyorder=args.sg_poly,
         flip_y=True,
     )
     sequence = normalize(points_3d, scores, cfg)  # (T, 9, 3)
 
-    # ── Save 3D output ────────────────────────────────────────────────────────
-    np.save(output_path, sequence)
+    # ── Save normalised pose ──────────────────────────────────────────────────
+    np.save(pose_norm_path, sequence)
     depth_mode = "metric (metres)" if estimator.is_metric else "relative [0, 1]"
     logger.info("Depth mode   : %s — model: %s", depth_mode, args.depth_model)
+    logger.info("Pose-norm saved → %s", pose_norm_path)
+
+    # ── Metric smoothing + kinematic feature extraction ───────────────────────
+    logger.info("Smoothing camera-space coordinates...")
+    points_3d_smooth = smooth_metric(
+        points_3d,
+        sg_window=cfg.sg_window,
+        sg_polyorder=cfg.sg_polyorder,
+    )
+
+    logger.info("Extracting kinematic features...")
+    features = extract_kinematic_features(
+        points_3d_smooth,
+        fps=fps,
+        sg_window=cfg.sg_window,
+        sg_polyorder=cfg.sg_polyorder,
+    )
+    np.savez(
+        kinematics_path,
+        velocity_3d=features["velocity_3d"],
+        acceleration_3d=features["acceleration_3d"],
+        elbow_angle_deg=features["elbow_angle_deg"],
+    )
+    logger.info("Kinematics saved → %s", kinematics_path)
 
     t_total = time.perf_counter() - t_start
 
     logger.info("=" * 55)
     logger.info("Done in %.1f s", t_total)
-    logger.info("Output shape : %s", sequence.shape)
-    logger.info("Saved to     : %s", output_path)
+    logger.info("Pose-norm shape : %s", sequence.shape)
+    logger.info("Pose-norm       : %s", pose_norm_path)
+    logger.info("Kinematics      : %s", kinematics_path)
     logger.info("=" * 55)
 
     # ── Optional debug video ──────────────────────────────────────────────────
@@ -293,11 +320,12 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Scale correction for metric depth (calibrated against OAK-D). "
                          "Only applied when using vit-s/b/l-metric depth models.")
 
-    # Step 4 — One Euro Filter
-    ap.add_argument("--min-cutoff", type=float, default=1.0,
-                    help="One Euro Filter min cutoff — lower = smoother at rest")
-    ap.add_argument("--beta", type=float, default=0.1,
-                    help="One Euro Filter beta — higher = less lag on fast motion")
+    # Step 4 — Savitzky-Golay smoothing
+    ap.add_argument("--sg-window", type=int, default=7,
+                    help="Savitzky-Golay window length (must be odd, > sg-poly). "
+                         "Default 7 ≈ 0.23 s at 30 fps.")
+    ap.add_argument("--sg-poly", type=int, default=3,
+                    help="Savitzky-Golay polynomial order. Default 3.")
 
     # Front camera
     ap.add_argument("--front-camera", action="store_true", default=True,

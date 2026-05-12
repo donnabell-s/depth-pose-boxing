@@ -99,12 +99,13 @@ def run(args: argparse.Namespace) -> None:
         logger.error("Video not found: %s", video_path)
         sys.exit(1)
 
-    output_dir = Path(args.output_dir)
+    output_dir   = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    stem        = video_path.stem
-    output_path = output_dir / f"{stem}.npy"
-    kp2d_path   = output_dir / f"{stem}_2d.npy"
-    debug_path  = output_dir / f"{stem}_debug.mp4"
+    stem         = video_path.stem
+    output_path  = output_dir / f"{stem}.npy"
+    camera_path  = output_dir / f"{stem}_camera.npy"
+    kp2d_path    = output_dir / f"{stem}_2d.npy"
+    debug_path   = output_dir / f"{stem}_debug.mp4"
 
     # ── Read video metadata ───────────────────────────────────────────────────
     fps = video_fps(video_path)
@@ -172,6 +173,9 @@ def run(args: argparse.Namespace) -> None:
     logger.info("[3/4] Back-projecting to camera space...")
     points_3d = backproject(keypoints_3d, intrinsics, scores, score_thr=args.pose_thr)
 
+    np.save(camera_path, points_3d)
+    logger.info("Camera-space keypoints saved → %s", camera_path)
+
     # ── Step 4 — Normalisation ────────────────────────────────────────────────
     logger.info("[4/4] Normalising skeleton sequence...")
     cfg = NormConfig(
@@ -209,7 +213,7 @@ def run(args: argparse.Namespace) -> None:
             scores=scores2d,            # (T, 9)
             frame_indices=fidxs,        # (T,)
             output_path=debug_path,
-            keypoints_3d=keypoints_3d,  # (T, 9, 3) — raw depth z, NOT normalised
+            keypoints_3d=sequence,      # (T, 9, 3) — normalised hip-relative z
             fps=fps,
             score_thr=args.pose_thr,
             front_camera=args.front_camera,

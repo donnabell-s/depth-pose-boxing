@@ -173,13 +173,13 @@ def render_skeleton_video(
                     if scores[current_t, j] < score_thr:
                         continue
                     z_val = float(keypoints_3d[current_t, j, 2])
-                    if z_val == 0.0:
+                    if not np.isfinite(z_val):
                         continue
                     px = int(keypoints_2d[current_t, j, 0])
                     py = int(keypoints_2d[current_t, j, 1])
                     colour = _JOINT_COLOURS.get(j, (200, 200, 200))
                     cv2.putText(
-                        frame, f"z:{z_val:.2f}",
+                        frame, f"zn:{z_val:.2f}",
                         (px + 8, py - 8), _FONT, 0.38, colour, 1, cv2.LINE_AA,
                     )
 

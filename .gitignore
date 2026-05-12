@@ -1,5 +1,6 @@
 # Virtual Environments
 venv/
+venv-wsl/
 env/
 ENV/
 .venv/

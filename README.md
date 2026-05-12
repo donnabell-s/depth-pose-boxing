@@ -77,8 +77,7 @@ depth-pose-boxing/
 
 ```bash
 pip install -r requirements.txt
-pip install openmim
-mim install mmengine "mmcv>=2.0.0" mmdet mmpose
+pip install ultralytics
 ```
 
 ### Local development (CPU only)
@@ -130,10 +129,11 @@ CAMERA_PROFILES = {
 
 ```bash
 
-python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --debug-video --depthmap-every 10
+python main.py --video data/raw/punch_iphone13_1.MOV --camera iphone13 --debug-video --depthmap-every 10
 
-python main.py --video data/raw/punch_iphone13.MOV --camera iphone13 --depth-model vit-b-metric --debug-video --depthmap-every 10
+python main.py --video data/raw/punch_iphone13_1.MOV --camera iphone13 --depth-model vit-b-metric --debug-video --depthmap-every 10
 
+python stitch_depthmaps.py data/processed/punch_iphone13_1_depthmap   -o data/processed/punch_iphone13_2_depthmap.mp4 --source-fps 30
 
 
 ```

@@ -2,11 +2,7 @@
 visualize.py — Debug visualisation utilities for depth-pose-boxing.
 
 Provides:
-  render_skeleton_video() — annotated skeleton overlay + live depth graph
-
-The output video is split into two panels:
-  Left  — original video with skeleton overlay
-  Right — live wrist depth graph with vertical progress line
+  render_skeleton_video() — annotated skeleton overlay video
 
 Joint colour coding:
   Red    — wrists (punch endpoints)
@@ -191,17 +187,15 @@ def render_skeleton_video(
     scores:        np.ndarray,        # (T, 9)
     frame_indices: np.ndarray,        # (T,) — original frame numbers
     output_path:   str | Path,
+    keypoints_3d:  np.ndarray | None = None,  # (T, 9, 3) — x, y, z; z in [0,1]
     fps:           float = 30.0,
     score_thr:     float = 0.3,
     label_joints:  bool  = False,
     codec:         str   = "mp4v",
+    front_camera:  bool  = True,
 ) -> Path:
     """
-    Write an annotated debug video with skeleton overlay and live depth graph.
-
-    Output layout:
-      Left  panel (original video width)  — skeleton overlay
-      Right panel (50% of video width)    — wrist depth graph with progress line
+    Write an annotated debug video with skeleton overlay.
 
     Parameters
     ----------
@@ -210,6 +204,7 @@ def render_skeleton_video(
     scores        : (T, 9)    float32 — per-joint confidence
     frame_indices : (T,)      int32   — which video frames these correspond to
     output_path   : where to write the annotated video
+    keypoints_3d  : (T, 9, 3) float32 — if provided, z values are drawn at each joint
     fps           : frame rate of the output video
     score_thr     : joints below this threshold drawn as missing
     label_joints  : draw joint names (default False)
@@ -224,37 +219,23 @@ def render_skeleton_video(
     # Build lookup: video frame_idx → sequence position t
     frame_map = {int(fidx): i for i, fidx in enumerate(frame_indices)}
 
-    # Pre-extract wrist Z values for the full graph
-    # Use raw depth from keypoints_2d Z channel if available,
-    # otherwise use the score as a proxy signal
-    # We use scores[:,_L_WRIST] and scores[:,_R_WRIST] as confidence-weighted Z
-    # The actual Z comes from the 3D sequence but we only have 2D here —
-    # use confidence as a visual signal (higher conf = closer detection)
-    z_left  = np.zeros(T, dtype=np.float32)
-    z_right = np.zeros(T, dtype=np.float32)
-    for t in range(T):
-        z_left[t]  = scores[t, _L_WRIST]  if scores[t, _L_WRIST]  >= score_thr else 0.0
-        z_right[t] = scores[t, _R_WRIST] if scores[t, _R_WRIST] >= score_thr else 0.0
-
-    # Get frame size after rotation correction
+    # Get frame size after auto-rotation
     first_frame = None
-    for _, frame in load_video_frames(video_path, max_frames=1):
+    for _, frame in load_video_frames(video_path, max_frames=1, front_camera=front_camera):
         first_frame = frame
         break
 
     if first_frame is None:
         raise RuntimeError(f"Could not read any frames from {video_path}")
 
-    H, W    = first_frame.shape[:2]
-    GW      = W // 2         # graph panel width = 50% of video width
-    out_W   = W + GW         # total output width
-    fourcc  = cv2.VideoWriter_fourcc(*codec)
-    writer  = cv2.VideoWriter(str(output_path), fourcc, fps, (out_W, H))
+    H, W   = first_frame.shape[:2]
+    fourcc = cv2.VideoWriter_fourcc(*codec)
+    writer = cv2.VideoWriter(str(output_path), fourcc, fps, (W, H))
 
     written   = 0
     current_t = 0   # current position in sequence
 
-    for raw_idx, frame in load_video_frames(video_path):
+    for raw_idx, frame in load_video_frames(video_path, front_camera=front_camera):
 
         if raw_idx in frame_map:
             current_t = frame_map[raw_idx]
@@ -274,6 +255,22 @@ def render_skeleton_video(
                 (10, 30), _FONT, 0.7, (255, 255, 255), 1, cv2.LINE_AA,
             )
 
+            # Depth (Z) labels at each joint
+            if keypoints_3d is not None:
+                for j in range(9):
+                    if scores[current_t, j] < score_thr:
+                        continue
+                    z_val = float(keypoints_3d[current_t, j, 2])
+                    if z_val == 0.0:
+                        continue
+                    px = int(keypoints_2d[current_t, j, 0])
+                    py = int(keypoints_2d[current_t, j, 1])
+                    colour = _JOINT_COLOURS.get(j, (200, 200, 200))
+                    cv2.putText(
+                        frame, f"z:{z_val:.2f}",
+                        (px + 8, py - 8), _FONT, 0.38, colour, 1, cv2.LINE_AA,
+                    )
+
             # Confidence bar at bottom
             bar_y = H - 20
             bar_w = W // 9
@@ -290,12 +287,7 @@ def render_skeleton_video(
                 cv2.putText(frame, name, (x0 + 2, bar_y - 14),
                             _FONT, 0.28, (200, 200, 200), 1, cv2.LINE_AA)
 
-        # Build graph panel at current_t
-        graph = _build_graph_panel(H, GW, z_left, z_right, current_t, T)
-
-        # Stitch side by side
-        combined = np.hstack([frame, graph])
-        writer.write(combined)
+        writer.write(frame)
         written += 1
 
     writer.release()
@@ -320,6 +312,7 @@ def save_depthmaps(
     output_dir:    str | Path,
     every_n:       int   = 10,
     score_thr:     float = 0.3,
+    front_camera:  bool  = True,
 ) -> list[Path]:
     """
     Save every Nth depth map frame as a PNG with:

@@ -13,7 +13,7 @@ Model options
   "nano"   : YOLOv8n-pose — fastest, lowest accuracy
   "small"  : YOLOv8s-pose — good balance for CPU
   "medium" : YOLOv8m-pose — recommended for GPU
-  "large"  : YOLOv8l-pose — best accuracy (default)
+  "large"  : YOLOv8l-pose — best accuracy
   "xlarge" : YOLOv8x-pose — highest accuracy, most VRAM
 """
 
@@ -213,18 +213,20 @@ class PoseExtractor:
 
     def process_video(
         self,
-        video_path: str,
-        skip_frames: int = 0,
-        max_frames:  int | None = None,
+        video_path:   str,
+        skip_frames:  int = 0,
+        max_frames:   int | None = None,
+        front_camera: bool = True,
     ) -> list[Pose2DResult]:
         """
         Extract 2D poses for every processed frame of a video.
 
         Parameters
         ----------
-        video_path  : path to the video file
-        skip_frames : process every (skip_frames + 1)-th frame
-        max_frames  : cap on number of frames processed
+        video_path   : path to the video file
+        skip_frames  : process every (skip_frames + 1)-th frame
+        max_frames   : cap on number of frames processed
+        front_camera : passed to load_video_frames — flip horizontally for front-camera footage
 
         Returns
         -------
@@ -237,7 +239,7 @@ class PoseExtractor:
         processed = 0
 
         for frame_idx, frame_bgr in load_video_frames(
-            video_path, skip_frames, max_frames
+            video_path, skip_frames, max_frames, front_camera
         ):
             result = self.process_frame(frame_bgr, frame_idx)
             processed += 1

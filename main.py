@@ -11,9 +11,6 @@ Usage
 With debug video output:
     python main.py --video data/raw/boxer_01.mp4 --camera iphone13 --debug-video
 
-Validate against ground truth after processing:
-    python main.py --video data/raw/boxer_01.mp4 --camera iphone13 --validate --gt data/athlete_pose_3d/boxer_01.npy
-
 Camera profiles
 ---------------
 Add your calibrated intrinsics to CAMERA_PROFILES below.
@@ -27,6 +24,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
@@ -34,18 +32,26 @@ from src.backproject import CameraIntrinsics, backproject
 from src.depth_estimation import DepthEstimator
 from src.normalize import NormConfig, normalize
 from src.pose_detector import PoseExtractor, stack_keypoints, frame_indices
-from src.data_validation import load_ground_truth, print_report
 from src.video import video_fps, video_frame_size
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Camera profiles
-# Fill in your calibrated values from calibrate.py.
-# Add a new entry for each camera you use.
+# Camera profiles — fill in calibrated values from calibrate.py.
 # ──────────────────────────────────────────────────────────────────────────────
 
-CAMERA_PROFILES: dict[str, CameraIntrinsics] = {
-    "iphone13": CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
-    "oppo": CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
+class CameraProfile(NamedTuple):
+    intrinsics: CameraIntrinsics
+
+
+CAMERA_PROFILES: dict[str, CameraProfile] = {
+    # Front-facing cameras (default): use --front-camera (default) to correct mirroring.
+    "iphone13": CameraProfile(
+        intrinsics=CameraIntrinsics(fx=1452.59, fy=1453.74, cx=996.58, cy=510.20),
+    ),
+    # Front-facing camera: use --front-camera (default).
+    "oppo": CameraProfile(
+        intrinsics=CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
+    ),
+    # Rear-facing cameras: add profiles here and use --no-front-camera.
 }
 
 
@@ -76,7 +82,8 @@ def run(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    intrinsics = CAMERA_PROFILES[args.camera]
+    profile    = CAMERA_PROFILES[args.camera]
+    intrinsics = profile.intrinsics
 
     if intrinsics.fx == 0.0 or intrinsics.fy == 0.0:
         logger.error(
@@ -128,6 +135,7 @@ def run(args: argparse.Namespace) -> None:
         video_path,
         skip_frames=args.skip_frames,
         max_frames=args.max_frames,
+        front_camera=args.front_camera,
     )
 
     # Save 2D keypoints for debug video rendering
@@ -143,6 +151,7 @@ def run(args: argparse.Namespace) -> None:
         device=args.device,
         sampling_radius=args.depth_radius,
         score_thr=args.pose_thr,
+        metric_scale_correction=args.metric_scale,
     )
 
     keep_maps = args.depthmap_every is not None
@@ -150,6 +159,7 @@ def run(args: argparse.Namespace) -> None:
         pose2d_results,
         video_path,
         keep_depth_maps=keep_maps,
+        front_camera=args.front_camera,
     )
 
     if keep_maps:
@@ -175,6 +185,9 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Save 3D output ────────────────────────────────────────────────────────
     np.save(output_path, sequence)
+    depth_mode = "metric (metres)" if estimator.is_metric else "relative [0, 1]"
+    logger.info("Depth mode   : %s — model: %s", depth_mode, args.depth_model)
+
     t_total = time.perf_counter() - t_start
 
     logger.info("=" * 55)
@@ -189,12 +202,14 @@ def run(args: argparse.Namespace) -> None:
         from src.visualize import render_skeleton_video
         render_skeleton_video(
             video_path=video_path,
-            keypoints_2d=kps2d,       # (T, 9, 2)
-            scores=scores2d,          # (T, 9)
-            frame_indices=fidxs,      # (T,)
+            keypoints_2d=kps2d,         # (T, 9, 2)
+            scores=scores2d,            # (T, 9)
+            frame_indices=fidxs,        # (T,)
             output_path=debug_path,
+            keypoints_3d=keypoints_3d,  # (T, 9, 3) — z in [0,1] drawn at each joint
             fps=fps,
             score_thr=args.pose_thr,
+            front_camera=args.front_camera,
         )
         logger.info("Debug video saved → %s", debug_path)
 
@@ -212,17 +227,11 @@ def run(args: argparse.Namespace) -> None:
             output_dir=depthmap_dir,
             every_n=args.depthmap_every,
             score_thr=args.pose_thr,
+            front_camera=args.front_camera,
         )
         logger.info("Depth maps saved → %s", depthmap_dir)
 
     # ── Optional validation ───────────────────────────────────────────────────
-    if args.validate:
-        if not args.gt:
-            logger.error("--validate requires --gt <ground_truth.npy>")
-            sys.exit(1)
-        logger.info("Validating against ground truth...")
-        gt = load_ground_truth(args.gt, num_frames=sequence.shape[0])
-        print_report(sequence, gt)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -266,16 +275,28 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Step 2 — Depth Anything V2
     ap.add_argument("--depth-model", default="vit-b",
-                    choices=["vit-s", "vit-b", "vit-l"],
-                    help="Depth Anything V2 model variant")
+                    choices=["vit-s", "vit-b", "vit-l",
+                             "vit-s-metric", "vit-b-metric", "vit-l-metric"],
+                    help="Depth Anything V2 model variant. "
+                         "Metric variants require local .pth checkpoints in models/ "
+                         "and the depth_anything_v2 package (indoor scenes only).")
     ap.add_argument("--depth-radius", type=int, default=2,
                     help="Depth sampling patch radius (0 = single pixel)")
+    ap.add_argument("--metric-scale", type=float, default=0.699,
+                    help="Scale correction for metric depth (calibrated against OAK-D). "
+                         "Only applied when using vit-s/b/l-metric depth models.")
 
     # Step 4 — One Euro Filter
     ap.add_argument("--min-cutoff", type=float, default=1.0,
                     help="One Euro Filter min cutoff — lower = smoother at rest")
     ap.add_argument("--beta", type=float, default=0.1,
                     help="One Euro Filter beta — higher = less lag on fast motion")
+
+    # Front camera
+    ap.add_argument("--front-camera", action="store_true", default=True,
+                    help="Flip frames horizontally to correct front camera mirroring (default: True)")
+    ap.add_argument("--no-front-camera", dest="front_camera", action="store_false",
+                    help="Disable horizontal flip — use for rear camera or already-corrected footage")
 
     # Debug video
     ap.add_argument("--debug-video", action="store_true",
@@ -285,12 +306,6 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--depthmap-every", type=int, default=None,
                     help="Save depth map PNG every N frames (e.g. 10). "
                          "Saved to data/processed/<name>_depthmap/")
-
-    # Validation
-    ap.add_argument("--validate", action="store_true",
-                    help="Run MPJPE validation after processing")
-    ap.add_argument("--gt", default=None,
-                    help="Path to ground truth .npy for validation")
 
     return ap
 

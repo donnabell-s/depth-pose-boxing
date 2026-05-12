@@ -1,5 +1,6 @@
 # Virtual Environments
 venv/
+venv-wsl/
 env/
 ENV/
 .venv/
@@ -53,7 +54,6 @@ coverage.xml
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
 
 # IDE
 .vscode/
@@ -82,4 +82,9 @@ requirements.local.txt
 
 # Model checkpoints — downloaded automatically, no need to commit
 models/
-*:Zone.Identifier
+*Zone.Identifier
+
+.claude
+.claude/settings.local.json/
+
+depth_anything_v2/

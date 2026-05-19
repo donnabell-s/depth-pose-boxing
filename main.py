@@ -154,7 +154,6 @@ def run(args: argparse.Namespace) -> None:
         device=args.device,
         sampling_radius=args.depth_radius,
         score_thr=args.pose_thr,
-        metric_scale_correction=args.metric_scale,
     )
 
     keep_maps = args.depthmap_every is not None
@@ -187,7 +186,7 @@ def run(args: argparse.Namespace) -> None:
         sg_polyorder=args.sg_poly,
         flip_y=True,
     )
-    sequence = normalize(points_3d, scores, cfg)  # (T, 9, 3)
+    sequence, shoulder_width = normalize(points_3d, scores, cfg)  # (T, 9, 3), float
 
     # ── Save normalised pose ──────────────────────────────────────────────────
     np.save(pose_norm_path, sequence)
@@ -207,6 +206,7 @@ def run(args: argparse.Namespace) -> None:
     features = extract_kinematic_features(
         points_3d_smooth,
         fps=fps,
+        shoulder_width=shoulder_width,
         sg_window=cfg.sg_window,
         sg_polyorder=cfg.sg_polyorder,
     )
@@ -316,9 +316,6 @@ def _build_parser() -> argparse.ArgumentParser:
                          "and the depth_anything_v2 package (indoor scenes only).")
     ap.add_argument("--depth-radius", type=int, default=2,
                     help="Depth sampling patch radius (0 = single pixel)")
-    ap.add_argument("--metric-scale", type=float, default=0.699,
-                    help="Scale correction for metric depth (calibrated against OAK-D). "
-                         "Only applied when using vit-s/b/l-metric depth models.")
 
     # Step 4 — Savitzky-Golay smoothing
     ap.add_argument("--sg-window", type=int, default=7,

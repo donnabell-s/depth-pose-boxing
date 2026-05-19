@@ -28,7 +28,7 @@ from src.constants import ROOT_LEFT_IDX, ROOT_RIGHT_IDX
 logger = logging.getLogger(__name__)
 
 
-def normalise_scale(seq: np.ndarray) -> np.ndarray:
+def normalise_scale(seq: np.ndarray) -> tuple[np.ndarray, float]:
     """
     Scale by median shoulder-to-shoulder distance across all frames.
 
@@ -38,7 +38,8 @@ def normalise_scale(seq: np.ndarray) -> np.ndarray:
 
     Returns
     -------
-    seq / median_shoulder_width — same shape.
+    seq / median_shoulder_width : (T, 9, 3) — normalised sequence
+    median_shoulder_width       : float      — scale factor used (same units as input)
     """
     l_sho = seq[:, ROOT_LEFT_IDX,  :]   # (T, 3)
     r_sho = seq[:, ROOT_RIGHT_IDX, :]   # (T, 3)
@@ -50,9 +51,9 @@ def normalise_scale(seq: np.ndarray) -> np.ndarray:
         logger.warning(
             "Could not compute shoulder width — skipping scale normalisation."
         )
-        return seq
+        return seq, 1.0
 
     median_width = float(np.median(valid_dist))
     logger.debug("Median shoulder width: %.4f units", median_width)
 
-    return seq / median_width
+    return seq / median_width, median_width

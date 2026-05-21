@@ -6,7 +6,11 @@ Wires the full pipeline end-to-end:
 
 Usage
 -----
+Single video:
     python main.py --video data/raw/boxer_01.mp4 --camera iphone13
+
+Batch (all videos in a subject folder):
+    python main.py --subject-dir data/raw/no_hardware/subject01 --camera iphone13
 
 With debug video output:
     python main.py --video data/raw/boxer_01.mp4 --camera iphone13 --debug-video
@@ -74,12 +78,10 @@ logger = logging.getLogger("depth-pose-boxing")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Pipeline
+# Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run(args: argparse.Namespace) -> None:
-
-    # ── Resolve camera intrinsics ─────────────────────────────────────────────
+def _resolve_intrinsics(args: argparse.Namespace) -> CameraIntrinsics:
     if args.intrinsics_json:
         import json as _json
         json_path = Path(args.intrinsics_json)
@@ -106,39 +108,55 @@ def run(args: argparse.Namespace) -> None:
             "Camera intrinsics loaded from %s | fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
             json_path.name, intrinsics.fx, intrinsics.fy, intrinsics.cx, intrinsics.cy,
         )
-    else:
-        if args.camera not in CAMERA_PROFILES:
-            logger.error(
-                "Unknown camera profile '%s'. Available: %s\n"
-                "Alternatively, pass --intrinsics-json <path> to use a JSON from calibrate.py.",
-                args.camera, list(CAMERA_PROFILES),
-            )
-            sys.exit(1)
-        intrinsics = CAMERA_PROFILES[args.camera].intrinsics
-        if intrinsics.fx == 0.0 or intrinsics.fy == 0.0:
-            logger.error(
-                "Camera profile '%s' has fx=0 or fy=0. "
-                "Run src/calibrate.py and fill in your intrinsics in CAMERA_PROFILES.",
-                args.camera,
-            )
-            sys.exit(1)
+        return intrinsics
 
-    # ── Resolve paths ─────────────────────────────────────────────────────────
-    video_path = Path(args.video)
-    if not video_path.exists():
-        logger.error("Video not found: %s", video_path)
+    if args.camera not in CAMERA_PROFILES:
+        logger.error(
+            "Unknown camera profile '%s'. Available: %s\n"
+            "Alternatively, pass --intrinsics-json <path> to use a JSON from calibrate.py.",
+            args.camera, list(CAMERA_PROFILES),
+        )
         sys.exit(1)
+    intrinsics = CAMERA_PROFILES[args.camera].intrinsics
+    if intrinsics.fx == 0.0 or intrinsics.fy == 0.0:
+        logger.error(
+            "Camera profile '%s' has fx=0 or fy=0. "
+            "Run src/calibrate.py and fill in your intrinsics in CAMERA_PROFILES.",
+            args.camera,
+        )
+        sys.exit(1)
+    return intrinsics
 
-    output_dir       = Path(args.output_dir)
+
+def _mirror_output_dir(video_path: Path, raw_root: Path, processed_root: Path) -> Path:
+    """Return the output directory that mirrors video_path's location under raw_root."""
+    try:
+        rel = video_path.parent.relative_to(raw_root)
+        return processed_root / rel
+    except ValueError:
+        return processed_root
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Single-video pipeline
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _process_one(
+    video_path: Path,
+    output_dir: Path,
+    intrinsics: CameraIntrinsics,
+    extractor: PoseExtractor,
+    estimator: DepthEstimator,
+    args: argparse.Namespace,
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    stem             = video_path.stem
-    pose_norm_path   = output_dir / f"{stem}_pose_norm.npy"
-    camera_path      = output_dir / f"{stem}_camera.npy"
-    kinematics_path  = output_dir / f"{stem}_kinematics.npz"
-    kp2d_path        = output_dir / f"{stem}_2d.npy"
-    debug_path       = output_dir / f"{stem}_debug.mp4"
+    stem            = video_path.stem
+    pose_norm_path  = output_dir / f"{stem}_pose_norm.npy"
+    camera_path     = output_dir / f"{stem}_camera.npy"
+    kinematics_path = output_dir / f"{stem}_kinematics.npz"
+    kp2d_path       = output_dir / f"{stem}_2d.npy"
+    debug_path      = output_dir / f"{stem}_debug.mp4"
 
-    # ── Read video metadata ───────────────────────────────────────────────────
     fps = video_fps(video_path)
     hw  = video_frame_size(video_path)
 
@@ -148,9 +166,7 @@ def run(args: argparse.Namespace) -> None:
     logger.info("FPS      : %.1f | Frame size: %dx%d", fps, hw[1], hw[0])
     cam_label = Path(args.intrinsics_json).name if args.intrinsics_json else args.camera
     logger.info("Camera   : %s | fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
-                cam_label,
-                intrinsics.fx, intrinsics.fy,
-                intrinsics.cx, intrinsics.cy)
+                cam_label, intrinsics.fx, intrinsics.fy, intrinsics.cx, intrinsics.cy)
     logger.info("Device   : %s", args.device)
     logger.info("=" * 55)
 
@@ -158,12 +174,6 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Step 1 — 2D pose extraction ───────────────────────────────────────────
     logger.info("[1/4] Extracting 2D keypoints (YOLOv8-%s)...", args.pose_model)
-    extractor = PoseExtractor(
-        model=args.pose_model,
-        device=args.device,
-        det_thr=args.det_thr,
-        pose_thr=args.pose_thr,
-    )
     pose2d_results = extractor.process_video(
         video_path,
         skip_frames=args.skip_frames,
@@ -179,15 +189,7 @@ def run(args: argparse.Namespace) -> None:
 
     # ── Step 2 — Depth estimation + Z sampling ────────────────────────────────
     logger.info("[2/4] Estimating depth (Depth Anything V2 — %s)...", args.depth_model)
-    estimator = DepthEstimator(
-        model=args.depth_model,
-        device=args.device,
-        sampling_radius=args.depth_radius,
-        score_thr=args.pose_thr,
-        max_depth=args.depth_max_metres,
-    )
-
-    keep_maps = args.depthmap_every is not None
+    keep_maps    = args.depthmap_every is not None
     depth_result = estimator.lift_to_3d(
         pose2d_results,
         video_path,
@@ -296,7 +298,60 @@ def run(args: argparse.Namespace) -> None:
         )
         logger.info("Depth maps saved → %s", depthmap_dir)
 
-    # ── Optional validation ───────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pipeline
+# ──────────────────────────────────────────────────────────────────────────────
+
+def run(args: argparse.Namespace) -> None:
+    intrinsics     = _resolve_intrinsics(args)
+    raw_root       = Path(args.raw_root)
+    processed_root = Path(args.output_dir)
+
+    # ── Build video list ──────────────────────────────────────────────────────
+    if args.subject_dir:
+        subject_dir = Path(args.subject_dir)
+        if not subject_dir.is_dir():
+            logger.error("Subject directory not found: %s", subject_dir)
+            sys.exit(1)
+        video_paths = sorted(
+            p for p in subject_dir.iterdir()
+            if p.suffix.lower() in {".mp4", ".mov", ".avi"}
+        )
+        if not video_paths:
+            logger.error("No video files (.mp4 .mov .avi) found in: %s", subject_dir)
+            sys.exit(1)
+    else:
+        video_path = Path(args.video)
+        if not video_path.exists():
+            logger.error("Video not found: %s", video_path)
+            sys.exit(1)
+        video_paths = [video_path]
+
+    # ── Load models once — reused across all videos in batch mode ─────────────
+    logger.info("Loading pose model (YOLOv8-%s)...", args.pose_model)
+    extractor = PoseExtractor(
+        model=args.pose_model,
+        device=args.device,
+        det_thr=args.det_thr,
+        pose_thr=args.pose_thr,
+    )
+    logger.info("Loading depth model (Depth Anything V2 — %s)...", args.depth_model)
+    estimator = DepthEstimator(
+        model=args.depth_model,
+        device=args.device,
+        sampling_radius=args.depth_radius,
+        score_thr=args.pose_thr,
+        max_depth=args.depth_max_metres,
+    )
+
+    # ── Process ───────────────────────────────────────────────────────────────
+    total = len(video_paths)
+    for idx, video_path in enumerate(video_paths, 1):
+        if total > 1:
+            logger.info("Processing video %d of %d: %s", idx, total, video_path.name)
+        output_dir = _mirror_output_dir(video_path, raw_root, processed_root)
+        _process_one(video_path, output_dir, intrinsics, extractor, estimator, args)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -309,9 +364,12 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # Required
-    ap.add_argument("--video", required=True,
-                    help="Path to input video (MP4 / AVI / MOV)")
+    # Input — mutually exclusive; validated in __main__
+    ap.add_argument("--video", default=None,
+                    help="Path to a single input video (MP4 / AVI / MOV)")
+    ap.add_argument("--subject-dir", default=None,
+                    help="Directory of videos to process in batch "
+                         "(top-level .mp4 / .mov / .avi files only, not recursive)")
 
     # Camera
     ap.add_argument("--camera", default="iphone13",
@@ -323,7 +381,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Output
     ap.add_argument("--output-dir", default="data/processed",
-                    help="Directory for output files")
+                    help="Processed-data root; subdirectory structure is mirrored from --raw-root")
+    ap.add_argument("--raw-root", default="data/raw",
+                    help="Raw-data root used to compute the mirrored output path")
 
     # Device
     ap.add_argument("--device", default="cuda:0",
@@ -382,4 +442,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 if __name__ == "__main__":
     parser = _build_parser()
-    run(parser.parse_args())
+    args   = parser.parse_args()
+
+    if args.video is None and args.subject_dir is None:
+        parser.error("one of --video or --subject-dir is required")
+    if args.video is not None and args.subject_dir is not None:
+        parser.error("--video and --subject-dir are mutually exclusive")
+
+    run(args)

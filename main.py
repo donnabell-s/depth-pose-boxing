@@ -348,9 +348,20 @@ def run(args: argparse.Namespace) -> None:
     # ── Process ───────────────────────────────────────────────────────────────
     total = len(video_paths)
     for idx, video_path in enumerate(video_paths, 1):
+        output_dir    = _mirror_output_dir(video_path, raw_root, processed_root)
+        stem          = video_path.stem
+        pose_norm     = output_dir / f"{stem}_pose_norm.npy"
+        kinematics    = output_dir / f"{stem}_kinematics.npz"
+
+        if not args.force and pose_norm.exists() and kinematics.exists():
+            if total > 1:
+                logger.info("[%d/%d] Skipping: %s (already processed)", idx, total, video_path.name)
+            else:
+                logger.info("Skipping: %s (already processed)", video_path.name)
+            continue
+
         if total > 1:
             logger.info("Processing video %d of %d: %s", idx, total, video_path.name)
-        output_dir = _mirror_output_dir(video_path, raw_root, processed_root)
         _process_one(video_path, output_dir, intrinsics, extractor, estimator, args)
 
 
@@ -427,6 +438,10 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Flip frames horizontally to correct front camera mirroring (default: True)")
     ap.add_argument("--no-front-camera", dest="front_camera", action="store_false",
                     help="Disable horizontal flip — use for rear camera or already-corrected footage")
+
+    # Force reprocess
+    ap.add_argument("--force", action="store_true",
+                    help="Reprocess all videos even if output files already exist")
 
     # Debug video
     ap.add_argument("--debug-video", action="store_true",

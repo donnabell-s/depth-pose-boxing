@@ -255,14 +255,27 @@ def save_depthmaps(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    T       = len(frame_indices)
-    saved   = []
+    T = len(frame_indices)
+
+    if len(depth_maps) != T:
+        raise ValueError(
+            f"save_depthmaps: depth_maps length ({len(depth_maps)}) != "
+            f"frame_indices length ({T}). They must be in 1-to-1 correspondence."
+        )
+
+    # Build frame_idx → depth_map so lookups are by video frame number,
+    # not by list position, which is robust against any reordering upstream.
+    depth_map_by_frame: dict[int, np.ndarray] = {
+        int(frame_indices[i]): depth_maps[i] for i in range(T)
+    }
+
+    saved = []
 
     for t in range(0, T, every_n):
-        frame_idx  = int(frame_indices[t])
-        depth_map  = depth_maps[t]          # (H, W) float32
-        kps        = keypoints_2d[t]        # (9, 2)
-        sc         = scores[t]              # (9,)
+        frame_idx = int(frame_indices[t])
+        depth_map = depth_map_by_frame[frame_idx]   # (H, W) float32
+        kps       = keypoints_2d[t]                 # (9, 2)
+        sc        = scores[t]                       # (9,)
 
         H, W = depth_map.shape
 

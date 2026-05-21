@@ -8,9 +8,9 @@ Public API
 Pipeline order (each step is a separate module):
     1. impute.py   — interpolate missing joints
     2. centre.py   — translate root to mid-hip (waist)
-    3. scale.py    — divide by shoulder-to-shoulder distance
+    3. scale.py    — measure shoulder width (not applied to sequence)
     4. flip Y      — +Y = up (image convention correction)
-    5. smooth.py   — One Euro Filter along time axis
+    5. smooth.py   — Savitzky-Golay smoothing
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def normalize(
     points_3d: np.ndarray,          # (T, 9, 3) from backproject.py
     scores:    np.ndarray,          # (T, 9)    from depth_estimation.py
     config:    NormConfig | None = None,
-) -> np.ndarray:
+) -> tuple[np.ndarray, float]:
     """
     Run the full normalisation pipeline on a 3D skeleton sequence.
 
@@ -66,7 +66,10 @@ def normalize(
 
     Returns
     -------
-    seq : (T, 9, 3) float32 — normalised skeleton, ready for ST-GCN.
+    seq            : (T, 9, 3) float32 — centred + flip_y + smoothed (no shoulder-width scaling)
+    shoulder_width : float — median shoulder-to-shoulder distance in input units
+                     (metres when using metric depth). Divide raw kinematic
+                     features by this value to make them scale-invariant.
     """
     cfg = config or NormConfig()
     T   = points_3d.shape[0]
@@ -91,9 +94,9 @@ def normalize(
     seq = centre_on_waist(seq)
     logger.debug("Step 2 — waist centring done.")
 
-    # 3. Scale normalisation
-    seq = normalise_scale(seq)
-    logger.debug("Step 3 — scale normalisation done.")
+    # 3. Measure shoulder width — seq is NOT divided; width is returned for kinematic scaling
+    _, shoulder_width = normalise_scale(seq)
+    logger.debug("Step 3 — shoulder width measured (%.4f); scale not applied.", shoulder_width)
 
     # 4. Y-axis flip (+Y = up)
     if cfg.flip_y:
@@ -105,11 +108,12 @@ def normalize(
     logger.debug("Step 5 — smoothing done.")
 
     logger.info(
-        "Normalisation complete | "
+        "Normalisation complete | shoulder_width=%.4f | "
         "X∈[%.3f, %.3f] Y∈[%.3f, %.3f] Z∈[%.3f, %.3f]",
+        shoulder_width,
         seq[:, :, 0].min(), seq[:, :, 0].max(),
         seq[:, :, 1].min(), seq[:, :, 1].max(),
         seq[:, :, 2].min(), seq[:, :, 2].max(),
     )
 
-    return seq  # (T, 9, 3) float32
+    return seq, shoulder_width  # (T, 9, 3) float32, float

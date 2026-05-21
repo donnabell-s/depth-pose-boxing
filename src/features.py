@@ -79,24 +79,38 @@ def smooth_metric(
 def extract_kinematic_features(
     points_3d_smooth: np.ndarray,  # (T, 9, 3) — output of smooth_metric()
     fps:              float,
+    shoulder_width:   float,
     sg_window:        int = 7,
     sg_polyorder:     int = 3,
 ) -> dict[str, np.ndarray]:
     """
     Extract kinematic features from smoothed metric camera-space coordinates.
 
+    All translational features (velocity, acceleration) are divided by
+    shoulder_width so that the same motion produces the same values regardless
+    of camera distance or any consistent depth-model scale bias.  The scale
+    cancellation is exact when the bias is multiplicative — which is the
+    dominant error mode for monocular metric depth models.
+
+    Elbow angle is computed from unit-normalised vectors and is inherently
+    scale-invariant; shoulder_width has no effect on it.
+
     Parameters
     ----------
     points_3d_smooth : (T, 9, 3) float32 — output of smooth_metric()
     fps              : video frame rate — scales derivatives to per-second units
+    shoulder_width   : median shoulder-to-shoulder distance returned by normalize()
+                       (metres when using metric depth).
     sg_window        : SG window (should match smooth_metric call)
     sg_polyorder     : SG polynomial order (should match smooth_metric call)
 
     Returns
     -------
     dict with:
-      "velocity_3d"     : (T, 2, 3) float32 — left/right wrist 3D velocity (m/s)
-      "acceleration_3d" : (T, 2, 3) float32 — left/right wrist 3D acceleration (m/s²)
+      "velocity_3d"     : (T, 2, 3) float32 — left/right wrist 3D velocity
+                          (shoulder-widths / s)
+      "acceleration_3d" : (T, 2, 3) float32 — left/right wrist 3D acceleration
+                          (shoulder-widths / s²)
       "elbow_angle_deg" : (T, 2)    float32 — left/right elbow angle (degrees)
     """
     T  = points_3d_smooth.shape[0]
@@ -124,10 +138,13 @@ def extract_kinematic_features(
 
     angles_deg = np.degrees(_elbow_angles(points_3d_smooth)).astype(np.float32)  # (T, 2)
 
+    vel = (vel / shoulder_width).astype(np.float32)
+    acc = (acc / shoulder_width).astype(np.float32)
+
     logger.info(
-        "Kinematic features | T=%d | "
-        "vel∈[%.3f, %.3f] m/s | acc∈[%.3f, %.3f] m/s² | angle∈[%.1f°, %.1f°]",
-        T,
+        "Kinematic features | T=%d | shoulder_width=%.4f | "
+        "vel∈[%.3f, %.3f] sw/s | acc∈[%.3f, %.3f] sw/s² | angle∈[%.1f°, %.1f°]",
+        T, shoulder_width,
         vel.min(),        vel.max(),
         acc.min(),        acc.max(),
         angles_deg.min(), angles_deg.max(),

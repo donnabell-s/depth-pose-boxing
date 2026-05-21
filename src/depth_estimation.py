@@ -85,34 +85,27 @@ class DepthEstimator:
     sampling_radius : patch radius for Z sampling at each joint pixel.
                       0 = single pixel, 2 = 5×5 patch (recommended).
     score_thr       : joints below this confidence get z = 0.0
+    max_depth       : depth ceiling in metres for metric models (default 20).
+                      Ignored by relative models. Raise for outdoor / large gyms.
     """
 
     def __init__(
         self,
-        model:                   str   = "vit-b",
-        device:                  str   = "cuda:0",
-        sampling_radius:         int   = 2,
-        score_thr:               float = 0.3,
-        metric_scale_correction: float = 0.699,  # calibrated against OAK-D stereo
+        model:           str   = "vit-b",
+        device:          str   = "cuda:0",
+        sampling_radius: int   = 2,
+        score_thr:       float = 0.3,
+        max_depth:       float = 20.0,
     ) -> None:
-        """
-        Parameters
-        ----------
-        metric_scale_correction : multiplicative scale applied to raw metric depth
-            before returning. Derived by comparing Depth Anything V2 metric output
-            against OAK-D stereo ground truth on a front-facing boxing subject at
-            ~1 m distance (OAK-D mean 1.674 m / DA mean 2.392 m = 0.699). Only
-            applied when is_metric=True; has no effect on relative models.
-        """
         if model not in _MODELS:
             raise ValueError(f"Unknown model '{model}'. Choose from: {list(_MODELS)}")
-        self.model                   = model
-        self.device                  = device
-        self.sampling_radius         = sampling_radius
-        self.score_thr               = score_thr
-        self.metric_scale_correction = metric_scale_correction
-        self._pipe                   = None
-        self._metric_model           = None
+        self.model           = model
+        self.device          = device
+        self.sampling_radius = sampling_radius
+        self.score_thr       = score_thr
+        self.max_depth       = max_depth
+        self._pipe           = None
+        self._metric_model   = None
 
     # ------------------------------------------------------------------
     # Properties
@@ -149,12 +142,11 @@ class DepthEstimator:
                 encoder=cfg["encoder"],
                 features=cfg["features"],
                 out_channels=cfg["out_channels"],
-                max_depth=20,
+                max_depth=self.max_depth,
             )
             model.load_state_dict(torch.load(cfg["checkpoint"], map_location="cpu"))
             self._metric_model = model.to(self.device).eval()
             logger.info("Depth Anything V2 metric model ready.")
-            logger.info("Metric depth scale correction: %.3f", self.metric_scale_correction)
         else:
             if self._pipe is not None:
                 return
@@ -199,7 +191,6 @@ class DepthEstimator:
         if self.is_metric:
             # DepthAnythingV2.infer_image accepts BGR and returns (H, W) float32 in metres.
             depth = self._metric_model.infer_image(frame_bgr).astype(np.float32)
-            depth = depth * self.metric_scale_correction
             if depth.shape != (h, w):
                 depth = cv2.resize(depth, (w, h), interpolation=cv2.INTER_LINEAR)
             return depth

@@ -212,7 +212,6 @@ python stitch_depthmaps.py data/processed/boxer_01_depthmap -o data/processed/bo
 | `--output-dir` | `data/processed` | Directory for all output files |
 | `--pose-model` | `large` | YOLOv8-Pose size: `nano`, `small`, `medium`, `large`, `xlarge` |
 | `--depth-model` | `vit-b` | `vit-s/b/l` (relative) or `vit-s/b/l-metric` (metric, requires `.pth`) |
-| `--metric-scale` | `0.699` | Scale correction for metric depth (calibrated against OAK-D) |
 | `--sg-window` | `7` | Savitzky-Golay window length — must be odd and > `--sg-poly` |
 | `--sg-poly` | `3` | Savitzky-Golay polynomial order |
 | `--skip-frames` | `0` | Process every N+1 frames |
@@ -248,7 +247,6 @@ Applied inside `normalize()` to produce `_pose_norm.npy`:
 | `vit-b-metric` | Metric | metres | Recommended for force estimation |
 | `vit-l-metric` | Metric | metres | Highest quality metric |
 
-Metric depth is calibrated against OAK-D stereo ground truth (`--metric-scale 0.699`).
 
 > **Note:** `_kinematics.npz` velocity and acceleration values are only physically meaningful in metres/s and metres/s² when using a metric depth model. With relative models the units are arbitrary but the signal shape remains valid for comparative analysis.
 

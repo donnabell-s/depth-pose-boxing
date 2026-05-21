@@ -49,7 +49,10 @@ def normalise_scale(seq: np.ndarray) -> tuple[np.ndarray, float]:
 
     if len(valid_dist) == 0:
         logger.warning(
-            "Could not compute shoulder width — skipping scale normalisation."
+            "normalise_scale: all %d frames have near-zero shoulder distance — "
+            "shoulders may be fully occluded. Skipping scale normalisation; "
+            "kinematic features will NOT be scale-invariant.",
+            len(shoulder_dist),
         )
         return seq, 1.0
 

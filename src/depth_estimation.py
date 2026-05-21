@@ -85,6 +85,8 @@ class DepthEstimator:
     sampling_radius : patch radius for Z sampling at each joint pixel.
                       0 = single pixel, 2 = 5×5 patch (recommended).
     score_thr       : joints below this confidence get z = 0.0
+    max_depth       : depth ceiling in metres for metric models (default 20).
+                      Ignored by relative models. Raise for outdoor / large gyms.
     """
 
     def __init__(
@@ -93,6 +95,7 @@ class DepthEstimator:
         device:          str   = "cuda:0",
         sampling_radius: int   = 2,
         score_thr:       float = 0.3,
+        max_depth:       float = 20.0,
     ) -> None:
         if model not in _MODELS:
             raise ValueError(f"Unknown model '{model}'. Choose from: {list(_MODELS)}")
@@ -100,6 +103,7 @@ class DepthEstimator:
         self.device          = device
         self.sampling_radius = sampling_radius
         self.score_thr       = score_thr
+        self.max_depth       = max_depth
         self._pipe           = None
         self._metric_model   = None
 
@@ -138,7 +142,7 @@ class DepthEstimator:
                 encoder=cfg["encoder"],
                 features=cfg["features"],
                 out_channels=cfg["out_channels"],
-                max_depth=20,
+                max_depth=self.max_depth,
             )
             model.load_state_dict(torch.load(cfg["checkpoint"], map_location="cpu"))
             self._metric_model = model.to(self.device).eval()

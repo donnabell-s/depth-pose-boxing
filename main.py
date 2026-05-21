@@ -13,8 +13,12 @@ With debug video output:
 
 Camera profiles
 ---------------
-Add your calibrated intrinsics to CAMERA_PROFILES below.
-Run calibrate.py to get your fx, fy, cx, cy values.
+Option A — built-in profile (edit CAMERA_PROFILES below):
+    python main.py --video ... --camera iphone13
+
+Option B — JSON from calibrate.py (no code changes needed):
+    python src/calibrate.py --video checkerboard.mp4 --save intrinsics.json
+    python main.py --video ... --intrinsics-json intrinsics.json
 """
 
 from __future__ import annotations
@@ -75,24 +79,49 @@ logger = logging.getLogger("depth-pose-boxing")
 
 def run(args: argparse.Namespace) -> None:
 
-    # ── Validate camera profile ───────────────────────────────────────────────
-    if args.camera not in CAMERA_PROFILES:
-        logger.error(
-            "Unknown camera profile '%s'. Available: %s",
-            args.camera, list(CAMERA_PROFILES)
+    # ── Resolve camera intrinsics ─────────────────────────────────────────────
+    if args.intrinsics_json:
+        import json as _json
+        json_path = Path(args.intrinsics_json)
+        if not json_path.exists():
+            logger.error("Intrinsics JSON not found: %s", json_path)
+            sys.exit(1)
+        with open(json_path) as f:
+            cal = _json.load(f)
+        try:
+            intrinsics = CameraIntrinsics(
+                fx=float(cal["fx"]),
+                fy=float(cal["fy"]),
+                cx=float(cal["cx"]),
+                cy=float(cal["cy"]),
+            )
+        except KeyError as exc:
+            logger.error(
+                "Intrinsics JSON is missing key %s. "
+                "Generate it with: python src/calibrate.py --video <checkerboard> --save intrinsics.json",
+                exc,
+            )
+            sys.exit(1)
+        logger.info(
+            "Camera intrinsics loaded from %s | fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
+            json_path.name, intrinsics.fx, intrinsics.fy, intrinsics.cx, intrinsics.cy,
         )
-        sys.exit(1)
-
-    profile    = CAMERA_PROFILES[args.camera]
-    intrinsics = profile.intrinsics
-
-    if intrinsics.fx == 0.0 or intrinsics.fy == 0.0:
-        logger.error(
-            "Camera profile '%s' has fx=0 or fy=0. "
-            "Run calibrate.py and fill in your intrinsics in CAMERA_PROFILES.",
-            args.camera,
-        )
-        sys.exit(1)
+    else:
+        if args.camera not in CAMERA_PROFILES:
+            logger.error(
+                "Unknown camera profile '%s'. Available: %s\n"
+                "Alternatively, pass --intrinsics-json <path> to use a JSON from calibrate.py.",
+                args.camera, list(CAMERA_PROFILES),
+            )
+            sys.exit(1)
+        intrinsics = CAMERA_PROFILES[args.camera].intrinsics
+        if intrinsics.fx == 0.0 or intrinsics.fy == 0.0:
+            logger.error(
+                "Camera profile '%s' has fx=0 or fy=0. "
+                "Run src/calibrate.py and fill in your intrinsics in CAMERA_PROFILES.",
+                args.camera,
+            )
+            sys.exit(1)
 
     # ── Resolve paths ─────────────────────────────────────────────────────────
     video_path = Path(args.video)
@@ -117,8 +146,9 @@ def run(args: argparse.Namespace) -> None:
     logger.info("depth-pose-boxing — Phase 1 Pipeline")
     logger.info("Video    : %s", video_path.name)
     logger.info("FPS      : %.1f | Frame size: %dx%d", fps, hw[1], hw[0])
+    cam_label = Path(args.intrinsics_json).name if args.intrinsics_json else args.camera
     logger.info("Camera   : %s | fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
-                args.camera,
+                cam_label,
                 intrinsics.fx, intrinsics.fy,
                 intrinsics.cx, intrinsics.cy)
     logger.info("Device   : %s", args.device)
@@ -154,6 +184,7 @@ def run(args: argparse.Namespace) -> None:
         device=args.device,
         sampling_radius=args.depth_radius,
         score_thr=args.pose_thr,
+        max_depth=args.depth_max_metres,
     )
 
     keep_maps = args.depthmap_every is not None
@@ -284,7 +315,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Camera
     ap.add_argument("--camera", default="iphone13",
-                    help="Camera profile name from CAMERA_PROFILES in main.py")
+                    help="Camera profile name from CAMERA_PROFILES in main.py. "
+                         "Ignored when --intrinsics-json is provided.")
+    ap.add_argument("--intrinsics-json", default=None,
+                    help="Path to a JSON file produced by src/calibrate.py "
+                         "(keys: fx, fy, cx, cy). Takes precedence over --camera.")
 
     # Output
     ap.add_argument("--output-dir", default="data/processed",
@@ -316,6 +351,9 @@ def _build_parser() -> argparse.ArgumentParser:
                          "and the depth_anything_v2 package (indoor scenes only).")
     ap.add_argument("--depth-radius", type=int, default=2,
                     help="Depth sampling patch radius (0 = single pixel)")
+    ap.add_argument("--depth-max-metres", type=float, default=20.0,
+                    help="Depth ceiling in metres for metric models (ignored by relative models). "
+                         "Raise above 20 for large outdoor venues.")
 
     # Step 4 — Savitzky-Golay smoothing
     ap.add_argument("--sg-window", type=int, default=7,

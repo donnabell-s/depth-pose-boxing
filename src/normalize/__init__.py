@@ -8,9 +8,9 @@ Public API
 Pipeline order (each step is a separate module):
     1. impute.py   — interpolate missing joints
     2. centre.py   — translate root to mid-hip (waist)
-    3. scale.py    — divide by shoulder-to-shoulder distance
+    3. scale.py    — measure shoulder width (not applied to sequence)
     4. flip Y      — +Y = up (image convention correction)
-    5. smooth.py   — One Euro Filter along time axis
+    5. smooth.py   — Savitzky-Golay smoothing
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def normalize(
     points_3d: np.ndarray,          # (T, 9, 3) from backproject.py
     scores:    np.ndarray,          # (T, 9)    from depth_estimation.py
     config:    NormConfig | None = None,
-) -> tuple[np.ndarray, np.ndarray, float]:
+) -> tuple[np.ndarray, float]:
     """
     Run the full normalisation pipeline on a 3D skeleton sequence.
 
@@ -66,10 +66,7 @@ def normalize(
 
     Returns
     -------
-    seq_scaled     : (T, 9, 3) float32 — centred + shoulder-width scaled + flip_y + smoothed
-                     (scale-invariant; use for classification)
-    seq_unscaled   : (T, 9, 3) float32 — centred + flip_y + smoothed, no shoulder-width division
-                     (preserves body size; use for regression)
+    seq            : (T, 9, 3) float32 — centred + flip_y + smoothed (no shoulder-width scaling)
     shoulder_width : float — median shoulder-to-shoulder distance in input units
                      (metres when using metric depth). Divide raw kinematic
                      features by this value to make them scale-invariant.
@@ -97,9 +94,9 @@ def normalize(
     seq = centre_on_waist(seq)
     logger.debug("Step 2 — waist centring done.")
 
-    # 3. Scale normalisation
-    seq, shoulder_width = normalise_scale(seq)
-    logger.debug("Step 3 — scale normalisation done (shoulder_width=%.4f).", shoulder_width)
+    # 3. Measure shoulder width — seq is NOT divided; width is returned for kinematic scaling
+    _, shoulder_width = normalise_scale(seq)
+    logger.debug("Step 3 — shoulder width measured (%.4f); scale not applied.", shoulder_width)
 
     # 4. Y-axis flip (+Y = up)
     if cfg.flip_y:
@@ -119,10 +116,4 @@ def normalize(
         seq[:, :, 2].min(), seq[:, :, 2].max(),
     )
 
-    # Valid only because Savitzky-Golay is a linear operator: smooth(x * c) == smooth(x) * c.
-    # If the smoothing step is ever replaced with a non-linear filter (e.g. median filter,
-    # bilateral filter), this shortcut breaks and the unscaled branch must run its own
-    # smooth() call on the pre-scale sequence.
-    seq_unscaled = seq * shoulder_width
-
-    return seq, seq_unscaled, shoulder_width  # (T, 9, 3), (T, 9, 3), float
+    return seq, shoulder_width  # (T, 9, 3) float32, float

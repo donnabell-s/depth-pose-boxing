@@ -132,7 +132,8 @@ def run(args: argparse.Namespace) -> None:
     output_dir       = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     stem             = video_path.stem
-    pose_norm_path   = output_dir / f"{stem}_pose_norm.npy"
+    pose_norm_scaled_path = output_dir / f"{stem}_pose_norm_scaled.npy"
+    pose_norm_path        = output_dir / f"{stem}_pose_norm.npy"
     camera_path      = output_dir / f"{stem}_camera.npy"
     kinematics_path  = output_dir / f"{stem}_kinematics.npz"
     kp2d_path        = output_dir / f"{stem}_2d.npy"
@@ -217,13 +218,15 @@ def run(args: argparse.Namespace) -> None:
         sg_polyorder=args.sg_poly,
         flip_y=True,
     )
-    sequence, shoulder_width = normalize(points_3d, scores, cfg)  # (T, 9, 3), float
+    seq_scaled, seq_unscaled, shoulder_width = normalize(points_3d, scores, cfg)
 
     # ── Save normalised pose ──────────────────────────────────────────────────
-    np.save(pose_norm_path, sequence)
+    np.save(pose_norm_scaled_path, seq_scaled)
+    np.save(pose_norm_path,        seq_unscaled)
     depth_mode = "metric (metres)" if estimator.is_metric else "relative [0, 1]"
     logger.info("Depth mode   : %s — model: %s", depth_mode, args.depth_model)
-    logger.info("Pose-norm saved → %s", pose_norm_path)
+    logger.info("Pose-norm (scaled)   → %s", pose_norm_scaled_path)
+    logger.info("Pose-norm (unscaled) → %s", pose_norm_path)
 
     # ── Metric smoothing + kinematic feature extraction ───────────────────────
     logger.info("Smoothing camera-space coordinates...")
@@ -253,8 +256,8 @@ def run(args: argparse.Namespace) -> None:
 
     logger.info("=" * 55)
     logger.info("Done in %.1f s", t_total)
-    logger.info("Pose-norm shape : %s", sequence.shape)
-    logger.info("Pose-norm       : %s", pose_norm_path)
+    logger.info("Pose-norm scaled : %s  shape %s", pose_norm_scaled_path, seq_scaled.shape)
+    logger.info("Pose-norm        : %s  shape %s", pose_norm_path,        seq_unscaled.shape)
     logger.info("Kinematics      : %s", kinematics_path)
     logger.info("=" * 55)
 
@@ -271,7 +274,7 @@ def run(args: argparse.Namespace) -> None:
             scores=scores2d,            # (T, 9)
             frame_indices=fidxs,        # (T,)
             output_path=debug_path,
-            keypoints_3d=sequence,      # (T, 9, 3) — normalised hip-relative z
+            keypoints_3d=seq_scaled,    # (T, 9, 3) — normalised hip-relative z
             fps=fps,
             score_thr=args.pose_thr,
             front_camera=args.front_camera,

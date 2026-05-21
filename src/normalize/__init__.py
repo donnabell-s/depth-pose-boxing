@@ -54,7 +54,7 @@ def normalize(
     points_3d: np.ndarray,          # (T, 9, 3) from backproject.py
     scores:    np.ndarray,          # (T, 9)    from depth_estimation.py
     config:    NormConfig | None = None,
-) -> tuple[np.ndarray, float]:
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Run the full normalisation pipeline on a 3D skeleton sequence.
 
@@ -66,7 +66,10 @@ def normalize(
 
     Returns
     -------
-    seq            : (T, 9, 3) float32 — normalised skeleton, ready for ST-GCN
+    seq_scaled     : (T, 9, 3) float32 — centred + shoulder-width scaled + flip_y + smoothed
+                     (scale-invariant; use for classification)
+    seq_unscaled   : (T, 9, 3) float32 — centred + flip_y + smoothed, no shoulder-width division
+                     (preserves body size; use for regression)
     shoulder_width : float — median shoulder-to-shoulder distance in input units
                      (metres when using metric depth). Divide raw kinematic
                      features by this value to make them scale-invariant.
@@ -116,4 +119,10 @@ def normalize(
         seq[:, :, 2].min(), seq[:, :, 2].max(),
     )
 
-    return seq, shoulder_width  # (T, 9, 3) float32, float
+    # Valid only because Savitzky-Golay is a linear operator: smooth(x * c) == smooth(x) * c.
+    # If the smoothing step is ever replaced with a non-linear filter (e.g. median filter,
+    # bilateral filter), this shortcut breaks and the unscaled branch must run its own
+    # smooth() call on the pre-scale sequence.
+    seq_unscaled = seq * shoulder_width
+
+    return seq, seq_unscaled, shoulder_width  # (T, 9, 3), (T, 9, 3), float

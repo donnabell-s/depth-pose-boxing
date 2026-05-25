@@ -64,9 +64,7 @@ coverage.xml
 .DS_Store
 
 # Project-specific
-data/raw/
-data/processed/
-data/athlete_pose_3d/
+data/*
 *.pth
 *.pt
 *.model

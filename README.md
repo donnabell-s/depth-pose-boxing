@@ -186,7 +186,11 @@ CAMERA_PROFILES = {
 ## Running the pipeline
 
 ```bash
-python main.py --video data/raw/boxer_01.MOV --camera iphone13
+python main.py --video data/raw/no_hardware/test/test_video.MOV --camera iphone13 --depth-model vit-b-metric
+```
+
+```bash
+python main.py --subject-dir data/raw/no_hardware/subject03 --camera iphone13 --depth-model vit-b-metric
 ```
 
 **Recommended for force estimation (metric depth):**
@@ -203,6 +207,9 @@ python main.py --video data/raw/boxer_01.MOV --camera iphone13 --debug-video --d
 ```bash
 python stitch_depthmaps.py data/processed/boxer_01_depthmap -o data/processed/boxer_01_depthmap.mp4 --source-fps 30
 ```
+
+
+
 
 ### CLI flags
 

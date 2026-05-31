@@ -52,6 +52,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+logs/*
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -64,9 +66,7 @@ coverage.xml
 .DS_Store
 
 # Project-specific
-data/raw/
-data/processed/
-data/athlete_pose_3d/
+data/*
 *.pth
 *.pt
 *.model

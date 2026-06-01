@@ -1,18 +1,3 @@
-# depth-pose-boxing — GPU requirements
-# Tested on: NVIDIA RTX 4060, CUDA 13.0, Python 3.10+ / 3.12+
-# Recommended environment: WSL2 (Ubuntu) or native Linux
-#
-# Install:
-#   pip install -r requirements.txt
-#
-# Note: torch, torchvision, torchaudio below use CUDA 13.0 (PyTorch 2.11+
-# default). If you need a different CUDA version, replace these three lines
-# with the correct --index-url from https://pytorch.org/get-started/locally/
-#
-# Metric depth models (vit-s/b/l-metric) require the depth_anything_v2
-# package — see README for setup instructions. Not included here because
-# it must be cloned from the Depth Anything V2 repo, not installed via pip.
-
 # ── PyTorch (CUDA 13.0 — default as of PyTorch 2.11) ─────────────────
 torch
 torchvision
@@ -22,6 +7,7 @@ torchaudio
 numpy>=1.24,<2.0        # pinned — keep below 2.0 for broader compatibility
 opencv-python>=4.8
 scipy>=1.11
+pandas>=2.0             # IMU CSV processing
 
 # ── Pose estimation ───────────────────────────────────────────────────
 ultralytics>=8.0        # YOLOv8-Pose — downloads model weights on first run
@@ -29,6 +15,10 @@ ultralytics>=8.0        # YOLOv8-Pose — downloads model weights on first run
 # ── Depth Anything V2 (relative models via HuggingFace) ───────────────
 transformers>=4.40
 Pillow>=10.0
+
+# ── IMU hardware integration (Phase 2B) ──────────────────────────────
+pyserial>=3.5           # USB serial communication with ESP/Feather
+keyboard>=0.13          # Q-key stop for receive scripts
 
 # ── Visualisation ─────────────────────────────────────────────────────
 matplotlib>=3.8

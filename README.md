@@ -26,6 +26,17 @@ YOLOv8-Pose → Depth Anything V2 → backproject() → points_3d
                          │              ↓
                          │       _pose_norm.npy
                          └─────────────────────────────────────────────
+
+IMU wrist sensor (Phase 2B)
+   │
+ESP/Feather ──USB──▶ receive_serial.py ──▶ raw _imu.csv
+                                                │
+                                        clean_imu_csv.py
+                                                │
+                                    _imu_cleaned.csv (sync_offset_ms)
+                                                │
+                              align with _kinematics.npz via sync clap
+                              → force regression labels
 ```
 
 ---
@@ -49,15 +60,31 @@ depth-pose-boxing/
 │   │   ├── scale.py          # shoulder-width scale normalisation
 │   │   └── smooth.py         # Savitzky-Golay smoothing
 │   └── visualize.py          # skeleton overlay video + depth map export
+├── firmware/
+│   ├── imu_wired/
+│   │   └── imu_wired.ino     # USB serial IMU firmware (production)
+│   ├── imu_wifi/
+│   │   └── imu_wifi.ino      # UDP WiFi IMU firmware (backup, latency issues)
+│   └── README.md             # hardware setup notes
+├── scripts/
+│   ├── imu/
+│   │   ├── receive_serial.py   # wired IMU data collection (recommended)
+│   │   ├── receive_udp.py      # wireless IMU data collection
+│   │   ├── clean_imu_csv.py    # single-file cleanup + sync clap detection
+│   │   ├── clean_imu_batch.py  # batch cleanup across a subject directory
+│   │   └── plot_imu.py         # IMU signal visualisation
+│   ├── calibrate.py            # camera intrinsics calibration
+│   └── stitch_depthmaps.py     # stitch depth map PNGs into video
 ├── depth_anything_v2/        # metric depth model source (cloned from DA V2 repo)
 ├── data/
-│   ├── raw/                  # input boxing videos
+│   ├── raw/
+│   │   ├── no_hardware/      # Phase 1: video-only recordings
+│   │   └── with_hardware/    # Phase 2B: paired video + IMU recordings
 │   └── processed/            # output files (see Output files section)
 ├── models/                   # Depth Anything V2 metric checkpoints (.pth)
 ├── notebooks/
 │   └── visualize.ipynb       # 3D skeleton + kinematic feature inspection
 ├── main.py                   # pipeline entry point
-├── calibrate.py              # camera intrinsics calibration
 ├── requirements.txt          # GPU dependencies (WSL2 / Linux / native GPU)
 └── requirements.local.txt    # CPU-only for local development (gitignored)
 ```
@@ -160,8 +187,8 @@ Before running the pipeline you need camera intrinsics (`fx, fy, cx, cy`).
 
 **Option A — Film a checkerboard and calibrate:**
 ```bash
-python calibrate.py --video data/raw/checkerboard.mp4
-python calibrate.py --video data/raw/checkerboard.mp4 --cols 10 --rows 7 --square-size 50 --skip-frames 10
+python scripts/calibrate.py --video data/raw/checkerboard.mp4
+python scripts/calibrate.py --video data/raw/checkerboard.mp4 --cols 10 --rows 7 --square-size 50 --skip-frames 10
 ```
 Copy the printed values into `CAMERA_PROFILES` in `main.py`.
 
@@ -205,7 +232,7 @@ python main.py --video data/raw/boxer_01.MOV --camera iphone13 --debug-video --d
 
 **Stitch depth map PNGs into a video:**
 ```bash
-python stitch_depthmaps.py data/processed/boxer_01_depthmap -o data/processed/boxer_01_depthmap.mp4 --source-fps 30
+python scripts/stitch_depthmaps.py data/processed/boxer_01_depthmap -o data/processed/boxer_01_depthmap.mp4 --source-fps 30
 ```
 
 
@@ -226,6 +253,54 @@ python stitch_depthmaps.py data/processed/boxer_01_depthmap -o data/processed/bo
 | `--front-camera` | `True` | Flip frames horizontally for front-facing camera recordings |
 | `--debug-video` | off | Render annotated skeleton overlay video with normalised Z labels |
 | `--depthmap-every` | off | Save raw depth map PNGs every N frames |
+
+---
+
+## Phase 2B — IMU data collection
+
+Phase 2B pairs each video recording with a wrist-mounted IMU (ESP/Feather with ICM-42688-P).
+The IMU stream is aligned to the video via sync claps bookending the recording.
+
+### Data collection workflow
+
+1. Flash `firmware/imu_wired/imu_wired.ino` to the ESP/Feather.
+
+2. Edit session metadata at the top of `scripts/imu/receive_serial.py`:
+   ```python
+   SUBJECT_ID = "subject01"
+   PUNCH_TYPE = "jab"
+   DISTANCE_M = 1
+   HAND = "right"
+   ```
+
+3. Start IMU recording:
+   ```bash
+   python scripts/imu/receive_serial.py
+   ```
+   Saves to `data/raw/with_hardware/<subject_id>/<session>_imu.csv`. Press **Q** to stop.
+
+4. Record the boxing video simultaneously. **Clap once at start and once at end** with the
+   gloved hand clearly visible to the camera — these bookend claps are the sync signal.
+
+5. Clean the IMU CSV and detect sync claps:
+   ```bash
+   python scripts/imu/clean_imu_csv.py data/raw/with_hardware/subject01/test_imu.csv
+   ```
+   Outputs `test_imu_cleaned.csv` with a `sync_offset_ms` column (first clap = 0) and
+   prints a quality verdict (target: EXCELLENT ≥ 180 Hz, mean interval ≤ 6 ms).
+
+6. Visualise the signal to verify clap detection and data quality:
+   ```bash
+   python scripts/imu/plot_imu.py data/raw/with_hardware/subject01/test_imu_cleaned.csv
+   ```
+
+7. Run the Phase 1 video pipeline on the paired video to get `_kinematics.npz`, then align
+   the two streams using `sync_offset_ms` for force regression label extraction.
+
+**Batch cleanup** across a full subject directory:
+```bash
+python scripts/imu/clean_imu_batch.py data/raw/with_hardware/subject01
+```
 
 ---
 

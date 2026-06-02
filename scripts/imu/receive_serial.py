@@ -25,8 +25,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # scripts/imu/ →
 DATA_DIR = PROJECT_ROOT / "data" / "raw" / "with_hardware"
 
 # Session metadata — set these before each recording
-SUBJECT_ID = "subject01"
-PUNCH_TYPE = "hook"
+SUBJECT_ID = "subject02"
+PUNCH_TYPE = "jab"
 DISTANCE_M = 2
 HAND = "left"
 

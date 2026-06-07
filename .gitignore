@@ -71,7 +71,6 @@ data/processed/*
 data/annotations/*
 data/annotated_videos/*
 data/clips/*
-data/metadata/no_hardware/*
 *.pth
 *.pt
 *.model

@@ -25,10 +25,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # scripts/imu/ →
 DATA_DIR = PROJECT_ROOT / "data" / "raw" / "with_hardware"
 
 # Session metadata — set these before each recording
-SUBJECT_ID = "subject03"
-PUNCH_TYPE = "jab"
-DISTANCE_M = 2
-HAND = "right"
+SUBJECT_ID = "subject04"
+PUNCH_TYPE = "uppercut"
+DISTANCE_M = 1
+HAND = "left"
 
 # Pre-flight check parameters
 PREFLIGHT_DURATION_S = 5

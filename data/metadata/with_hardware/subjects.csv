@@ -1,4 +1,5 @@
-subject_id,body_weight_kg,hand_dominant
-subject01,58.0,right
-subject02,58.0,right
-subject03,58.0,right
+subject_id,person_id,body_weight_kg,hand_dominant
+subject01,person01,58.0,right
+subject02,person01,58.0,right
+subject03,person01,58.0,right
+subject04,person02,45.0,right

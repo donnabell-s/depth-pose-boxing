@@ -1,0 +1,33 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Within-session force scatter (left)
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+# Within-session
+ax = axes[0]
+ax.scatter(targets_ws[:, 0], preds_ws[:, 0], alpha=0.4, color="#2E5BBA", s=40)
+ax.plot([50, 300], [50, 300], "r--", linewidth=2)
+ax.set_xlabel("True peak force (N)", fontsize=13)
+ax.set_ylabel("Predicted peak force (N)", fontsize=13)
+ax.set_title(f"Within-Session\nMAE 16.0N, R² 0.81", fontsize=14)
+ax.set_xlim(40, 320)
+ax.set_ylim(40, 320)
+ax.grid(alpha=0.3)
+ax.set_aspect("equal")
+
+# Cross-subject
+ax = axes[1]
+ax.scatter(targets_cv[:, 0], preds_cv[:, 0], alpha=0.4, color="#2E5BBA", s=40)
+ax.plot([50, 300], [50, 300], "r--", linewidth=2)
+ax.set_xlabel("True peak force (N)", fontsize=13)
+ax.set_ylabel("Predicted peak force (N)", fontsize=13)
+ax.set_title(f"Cross-Subject\nMAE 43.4N, R² -0.27", fontsize=14)
+ax.set_xlim(40, 320)
+ax.set_ylim(40, 320)
+ax.grid(alpha=0.3)
+ax.set_aspect("equal")
+
+plt.tight_layout()
+plt.savefig("slide3_force_comparison.png", dpi=150, bbox_inches="tight")
+plt.show()

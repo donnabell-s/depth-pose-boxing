@@ -16,7 +16,7 @@
 const char* ssid = "hotpot";
 const char* password = "kastellan";
 
-IPAddress pcIP(192, 168, 137, 79);
+IPAddress pcIP(192, 168, 137, 217);
 
 const int port = 4210;
 
@@ -54,6 +54,12 @@ void setup() {
   // Set ±16g
   Wire.beginTransmission(MPU_addr);
   Wire.write(0x1C);
+  Wire.write(0x18);
+  Wire.endTransmission(true);
+
+  // Gyroscope ±2000 dps: 16.4 LSB/(°/s) — matches imu.ino (wired) configuration
+  Wire.beginTransmission(MPU_addr);
+  Wire.write(0x1B);
   Wire.write(0x18);
   Wire.endTransmission(true);
 
@@ -156,6 +162,9 @@ void loop() {
 
     // Append sample to batch buffer
     // Format per line: "relMicros,ax,ay,az,gx,gy,gz,mx,my,mz\n"
+    // gx,gy,gz are raw int16 at ±2000dps (16.4 LSB/dps) — same scale as imu.ino;
+    // the Python receiver divides by 16.4 to get dps, since text formatting it
+    // here would risk overflowing the batch buffer at 200Hz.
     int written = snprintf(
       batchBuffer + batchPos,
       sizeof(batchBuffer) - batchPos,

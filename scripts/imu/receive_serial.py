@@ -8,6 +8,7 @@ Features:
 - Auto-detects ESP/Feather COM port
 """
 
+import argparse
 import csv
 import time
 from pathlib import Path
@@ -21,21 +22,32 @@ import keyboard
 BAUD_RATE = 115200
 SERIAL_TIMEOUT = 0.1
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # scripts/imu/ → project root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  
 DATA_DIR = PROJECT_ROOT / "data" / "raw" / "with_hardware"
 
 # Session metadata — set these before each recording
-SUBJECT_ID = "subject05"
-PUNCH_TYPE = "hook"
-DISTANCE_M = 2
-HAND = "left"
+SUBJECT_ID = "subject08"
+PUNCH_TYPE = "jab"
+DISTANCE_M = 1
+HAND = "right"
 
 # Pre-flight check parameters
 PREFLIGHT_DURATION_S = 5
-PREFLIGHT_MIN_VARIATION = 0.1  # minimum range in any axis to consider IMU responsive
+PREFLIGHT_MIN_VARIATION = 0.1 
 
 # Frozen sensor detection during recording
-FROZEN_THRESHOLD = 10  # number of consecutive identical samples before warning
+FROZEN_THRESHOLD = 10  
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Receive IMU data over USB serial")
+    parser.add_argument("--subject", default=SUBJECT_ID)
+    parser.add_argument("--punch-type", default=PUNCH_TYPE)
+    parser.add_argument("--distance", type=int, default=DISTANCE_M)
+    parser.add_argument("--hand", default=HAND)
+    parser.add_argument("--output", type=Path, default=None,
+                         help="Explicit output CSV path (overrides --subject/--punch-type/--distance/--hand naming)")
+    return parser.parse_args()
 
 
 def find_serial_port() -> str | None:
@@ -125,11 +137,17 @@ def preflight_check(ser: serial.Serial) -> bool:
 
 
 def main():
-    session_name = f"{PUNCH_TYPE}_{DISTANCE_M}m_{HAND}"
-    session_dir = DATA_DIR / SUBJECT_ID
-    session_dir.mkdir(parents=True, exist_ok=True)
-    output_path = session_dir / f"{session_name}_imu.csv"
-    
+    args = parse_args()
+
+    if args.output is not None:
+        output_path = args.output
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        session_name = f"{args.punch_type}_{args.distance}m_{args.hand}"
+        session_dir = DATA_DIR / args.subject
+        session_dir.mkdir(parents=True, exist_ok=True)
+        output_path = session_dir / f"{session_name}_imu.csv"
+
     # Find serial port
     port = find_serial_port()
     if port is None:
@@ -158,7 +176,7 @@ def main():
     print("\n" + "=" * 60)
     print(f"READY TO RECORD: {session_name}")
     print("=" * 60)
-    print(f"Subject:           {SUBJECT_ID}")
+    print(f"Subject:           {args.subject}")
     print(f"Output file:       {output_path}")
     print("\nPress ENTER to start recording, or Ctrl+C to cancel.")
     try:

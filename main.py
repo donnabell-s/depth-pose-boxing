@@ -58,7 +58,7 @@ CAMERA_PROFILES: dict[str, CameraProfile] = {
     ),
     # Front-facing camera: use --front-camera (default).
     "oppo": CameraProfile(
-        intrinsics=CameraIntrinsics(fx=826.75, fy=827.42, cx=648.15, cy=345.17),
+        intrinsics=CameraIntrinsics(fx=817.77, fy=817.98, cx=638.74, cy=342.57),
     ),
     # Rear-facing cameras: add profiles here and use --no-front-camera.
 }

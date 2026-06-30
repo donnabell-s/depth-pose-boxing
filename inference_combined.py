@@ -37,7 +37,7 @@ import torch.nn.functional as F
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-T = 48
+T = 40
 N_JOINTS = 9
 N_CHANNELS = 3
 N_FEATURES = N_JOINTS * N_CHANNELS  # 27
@@ -46,7 +46,7 @@ CLASS_TO_IDX = {"cross": 0, "hook": 1, "jab": 2, "uppercut": 3, "no_punch": 4}
 IDX_TO_CLASS = {v: k for k, v in CLASS_TO_IDX.items()}
 
 WINDOW_STEP = 2
-CONFIDENCE_THRESHOLD = 0.7
+CONFIDENCE_THRESHOLD = 0.82
 MIN_PUNCH_LENGTH = 4   # minimum windows for a valid event
 MAX_GAP_TO_MERGE = 4   # max window gap to merge same-class events
 
@@ -104,14 +104,14 @@ class TCNBlock(nn.Module):
 
 
 class TCNClassifier(nn.Module):
-    """Phase 2A — punch type classifier. channels=[64,128,256], ~690K params."""
+    """Phase 2A — punch type classifier. channels=[32, 64, 128]."""
 
     def __init__(self, in_channels: int = N_FEATURES, n_classes: int = 5,
                  channels: list[int] | None = None,
                  kernel_size: int = 5, dropout: float = 0.2):
         super().__init__()
         if channels is None:
-            channels = [64, 128, 256]
+            channels = [32, 64, 128]
         self.data_bn = nn.BatchNorm1d(in_channels)
         layers, prev = [], in_channels
         for i, ch in enumerate(channels):
@@ -251,8 +251,10 @@ def _find_latest(directory: Path, pattern: str) -> Path | None:
     return matches[-1] if matches else None
 
 
-def load_classifier(checkpoint: Path, device: torch.device) -> TCNClassifier:
-    model = TCNClassifier()
+def load_classifier(
+    checkpoint: Path, device: torch.device, channels: list[int] | None = None
+) -> TCNClassifier:
+    model = TCNClassifier(channels=channels)
     model.load_state_dict(
         torch.load(checkpoint, map_location=device, weights_only=True)
     )
@@ -516,17 +518,17 @@ def make_annotated_video(
                     if len(history) > 3:
                         history.pop(0)
 
-            cv2.rectangle(frame, (0, 0), (395, 112), (0, 0, 0), -1)
-            cv2.putText(frame, lc.upper(), (10, 36),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, CLASS_COLORS_BGR[lc], 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Force: {label_force[fi]:.0f} N", (10, 66),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Speed: {label_speed[fi]:.2f} m/s", (10, 92),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.rectangle(frame, (0, 0), (470, 130), (0, 0, 0), -1)
+            cv2.putText(frame, lc.upper(), (10, 42),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, CLASS_COLORS_BGR[lc], 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Force: {label_force[fi]:.0f} N", (10, 80),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Speed: {label_speed[fi]:.2f} m/s", (10, 115),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
         else:
-            cv2.rectangle(frame, (0, 0), (262, 48), (0, 0, 0), -1)
-            cv2.putText(frame, "no_punch", (10, 36),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, CLASS_COLORS_BGR["no_punch"],
+            cv2.rectangle(frame, (0, 0), (310, 55), (0, 0, 0), -1)
+            cv2.putText(frame, "no_punch", (10, 42),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.1, CLASS_COLORS_BGR["no_punch"],
                         2, cv2.LINE_AA)
 
         # History panel — bottom-right, last 3 punches
@@ -636,7 +638,11 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Output annotated video path")
     ap.add_argument("--csv-output", default=None,
                     help="Optional path to save detected punches as CSV")
+    ap.add_argument("--save-pose-norm", default=None, metavar="NPY_PATH",
+                    help="Optional path to save the final normalised pose array from Phase 1")
     # Model overrides
+    ap.add_argument("--classifier-channels", type=int, nargs="+", default=None,
+                    help="Override TCN classifier channel sizes (default: 32 64 128)")
     ap.add_argument("--classifier-model", default=None,
                     help="Classifier checkpoint path "
                          "(default: newest *_best.pt in models/tcn/)")
@@ -664,7 +670,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--pose-model", default="large",
                     choices=["nano", "small", "medium", "large", "xlarge"],
                     help="YOLOv8-Pose model size")
-    ap.add_argument("--depth-model", default="vit-b",
+    ap.add_argument("--depth-model", default="vit-b-metric",
                     choices=["vit-s", "vit-b", "vit-l",
                              "vit-s-metric", "vit-b-metric", "vit-l-metric"],
                     help="Depth Anything V2 model variant")
@@ -740,11 +746,17 @@ def main() -> None:
         pose_array = run_phase1(video_path, args, device=str(device))
         logger.info("Phase 1 completed in %.1f s.", time.perf_counter() - t0)
 
+    if args.save_pose_norm:
+        npy_out_path = Path(args.save_pose_norm)
+        npy_out_path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(npy_out_path, pose_array)
+        logger.info("Saved normalised pose array to %s", npy_out_path)
+
     logger.info("Pose array shape: %s  dtype=%s", pose_array.shape, pose_array.dtype)
 
     # ── Load Models + Normalisation Stats ────────────────────────────────────
     logger.info("=== Phase 2: Loading Models ===")
-    cls_model = load_classifier(cls_path, device)
+    cls_model = load_classifier(cls_path, device, channels=args.classifier_channels)
     reg_model = load_regressor(reg_path, device)
     target_mean, target_std = load_target_stats(labels_csv)
 

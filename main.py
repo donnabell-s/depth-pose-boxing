@@ -291,6 +291,7 @@ def _process_one(
             scores=scores2d,
             frame_indices=fidxs,
             depth_maps=depth_maps,
+            normalized_3d=sequence,
             output_dir=depthmap_dir,
             every_n=args.depthmap_every,
             score_thr=args.pose_thr,

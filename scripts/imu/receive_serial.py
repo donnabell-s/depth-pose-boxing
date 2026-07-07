@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data" / "raw" / "with_hardware"
 
 # Session metadata — set these before each recording
-SUBJECT_ID = "subject10"
+SUBJECT_ID = "subject14"
 PUNCH_TYPE = "uppercut"
 DISTANCE_M = 2
 HAND = "left"

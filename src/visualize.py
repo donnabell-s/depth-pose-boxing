@@ -225,9 +225,11 @@ def save_depthmaps(
     scores:        np.ndarray,   # (T, 9)
     frame_indices: np.ndarray,   # (T,) original frame numbers
     depth_maps:    list,         # list of (H, W) float32 depth maps from depth_estimation
+    normalized_3d: np.ndarray,   # (T, 9, 3) hip-normalized sequence from normalize()
     output_dir:    str | Path,
     every_n:       int   = 10,
     score_thr:     float = 0.3,
+    text_scale:    float = 2.0,
     front_camera:  bool  = True,
 ) -> list[Path]:
     """
@@ -244,9 +246,11 @@ def save_depthmaps(
     scores        : (T, 9) per-joint confidence
     frame_indices : (T,) original video frame numbers
     depth_maps    : list of T depth maps (H, W) float32 in [0, 1]
+    normalized_3d : (T, 9, 3) hip-normalized keypoints used for joint labels
     output_dir    : directory to save PNGs — will create subdir automatically
     every_n       : save every Nth frame (default 10)
     score_thr     : joints below this threshold shown as missing
+    text_scale    : multiplier for joint labels and captions (2.0 = roughly 2x larger)
 
     Returns
     -------
@@ -262,6 +266,17 @@ def save_depthmaps(
             f"save_depthmaps: depth_maps length ({len(depth_maps)}) != "
             f"frame_indices length ({T}). They must be in 1-to-1 correspondence."
         )
+    if normalized_3d.shape != (T, 9, 3):
+        raise ValueError(
+            f"save_depthmaps: normalized_3d shape ({normalized_3d.shape}) != "
+            f"(T, 9, 3) with T={T}."
+        )
+
+    label_font_scale = 0.6 * text_scale
+    frame_font_scale = 0.55 * text_scale
+    bar_font_scale = 0.28 * text_scale
+    outline_thickness = max(4, int(round(4 * text_scale)))
+    text_thickness = max(1, int(round(text_scale)))
 
     # Build frame_idx → depth_map so lookups are by video frame number,
     # not by list position, which is robust against any reordering upstream.
@@ -276,6 +291,7 @@ def save_depthmaps(
         depth_map = depth_map_by_frame[frame_idx]   # (H, W) float32
         kps       = keypoints_2d[t]                 # (9, 2)
         sc        = scores[t]                       # (9,)
+        norm_3d   = normalized_3d[t]                # (9, 3)
 
         H, W = depth_map.shape
 
@@ -297,24 +313,24 @@ def save_depthmaps(
             cv2.circle(depth_colour, (cx, cy), 8, (255, 255, 255), 1, cv2.LINE_AA)
 
             # Depth value at joint
-            z_val = float(depth_map[cy, cx])
+            z_val = float(norm_3d[j, 2])
             label = f"{ACTIVE_JOINT_NAMES.get(j, str(j)).replace('_', ' ')}: {z_val:.3f}"
             cv2.putText(  # dark outline for readability
                 depth_colour, label,
                 (cx + 10, cy - 4),
-                _FONT, 0.6, (0, 0, 0), 4, cv2.LINE_AA,
+                _FONT, label_font_scale, (0, 0, 0), outline_thickness, cv2.LINE_AA,
             )
             cv2.putText(
                 depth_colour, label,
                 (cx + 10, cy - 4),
-                _FONT, 0.6, colour, 1, cv2.LINE_AA,
+                _FONT, label_font_scale, colour, text_thickness, cv2.LINE_AA,
             )
 
         # ── Frame info ────────────────────────────────────────────────────
         cv2.putText(
             depth_colour,
             f"Frame {frame_idx:04d}  |  Depth map  |  INFERNO (dark=close, bright=far)",
-            (10, 24), _FONT, 0.55, (255, 255, 255), 1, cv2.LINE_AA,
+            (10, 24), _FONT, frame_font_scale, (255, 255, 255), 1, cv2.LINE_AA,
         )
 
         # ── Confidence bar ────────────────────────────────────────────────
@@ -334,7 +350,7 @@ def save_depthmaps(
                           color, -1)
             name = ACTIVE_JOINT_NAMES.get(j, str(j))[:4]
             cv2.putText(depth_colour, name, (x0 + 2, bar_y - 14),
-                        _FONT, 0.28, (200, 200, 200), 1, cv2.LINE_AA)
+                                                _FONT, bar_font_scale, (200, 200, 200), 1, cv2.LINE_AA)
 
         # ── Save PNG ──────────────────────────────────────────────────────
         out_path = output_dir / f"frame_{frame_idx:04d}_depthmap.png"
